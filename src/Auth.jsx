@@ -71,7 +71,7 @@ function HeroImage({ compact }) {
   );
 }
 
-export default function Auth() {
+export default function Auth({ onDevMode }) {
   const [screen, setScreen] = useState("landing"); // landing | signin | signup
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
@@ -125,6 +125,13 @@ export default function Auth() {
         <button onClick={goSignIn} style={ghostBtn}>SIGN IN</button>
         <div style={{ marginTop:"auto", textAlign:"center" }}>
           <span style={{ fontSize:11, color:T.text2, letterSpacing:"0.04em" }}>Built for Hyrox competitors</span>
+          {onDevMode && (
+            <div style={{ marginTop:16 }}>
+              <button onClick={onDevMode} style={{ background:"none", border:"1px solid rgba(255,255,255,0.08)", borderRadius:8, padding:"6px 14px", color:T.text2, fontSize:11, cursor:"pointer", fontFamily:"'Barlow',sans-serif" }}>
+                Dev: Preview Onboarding →
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

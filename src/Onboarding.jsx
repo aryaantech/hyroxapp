@@ -450,7 +450,7 @@ export default function Onboarding({ user, onComplete }) {
         <LevelCard label="I lift regularly" desc="I track my numbers and know my working weights" color="212,224,32" selected={liftLevel==="experienced"} onClick={()=>setLiftLevel("experienced")}/>
         {liftLevel === "experienced" && (
           <div style={{ marginTop:4 }}>
-            <div style={{ fontSize:11, fontWeight:700, color:T.text2, letterSpacing:"0.1em", marginBottom:12 }}>YOUR BEST LIFTS (kg)</div>
+            <div style={{ fontSize:11, fontWeight:700, color:T.text2, letterSpacing:"0.1em", marginBottom:12 }}>ONE REP MAX — 1RM (kg)</div>
             {lifts.map((l,i)=>(
               <div key={i} style={{ display:"flex", gap:8, marginBottom:8 }}>
                 <select value={l.name} onChange={e=>updateLift(i,"name",e.target.value)} style={{

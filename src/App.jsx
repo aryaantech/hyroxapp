@@ -822,6 +822,12 @@ function ActiveWorkout({workout,history,onDone,onBack}){
             </div>
             <Pill label={curEx.category||workout.tag} type={workout.tag}/>
           </div>
+          {/* Previous session benchmark */}
+          {(()=>{const prev=history.flatMap(h=>h.exercises||[]).filter(e=>e.name===curEx.name&&e.setLogs?.length>0).slice(-1)[0];const ps=prev?.setLogs?.slice(-1)[0];if(!ps)return null;const suggested=ps.weight&&ps.weight!=="BW"?Math.ceil((parseFloat(ps.weight)||0)*1.025/2.5)*2.5:null;return(<div style={{background:T.orangeL,border:`1px solid ${T.orange}33`,borderRadius:12,padding:"9px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
+            <div style={{fontSize:10,fontWeight:800,color:T.orange,letterSpacing:"0.08em",flexShrink:0}}>LAST</div>
+            <div style={{flex:1,fontSize:13,color:T.text1,fontWeight:600}}>{ps.reps} reps × {ps.weight&&ps.weight!=="BW"?`${ps.weight}kg`:"bodyweight"}</div>
+            {suggested&&<div style={{fontSize:11,fontWeight:700,color:T.green,flexShrink:0}}>Try {suggested}kg ↑</div>}
+          </div>);})()}
           {/* Reps + Weight inputs */}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
             {[["REPS",reps,setReps],["WEIGHT",weights,setWeights]].map(([label,arr,setter])=>(
@@ -1338,10 +1344,12 @@ function RunningTab({logs,addLog,deleteLog}){
   const [screen,setScreen]=useState("home");
   const [detailRun,setDetailRun]=useState(null);
   const runLogs=logs.filter(l=>l.type==="RUN");
-  const totalKm=runLogs.reduce((a,l)=>a+(l.distKm||0),0)+37;
+  const totalKm=runLogs.reduce((a,l)=>a+(l.distKm||0),0);
   const bestPace=runLogs.reduce((best,l)=>{if(!l.pace||l.pace==="—")return best;const[m,s]=l.pace.split(":").map(Number);const t=m*60+(s||0);return best===0||t<best?t:best;},0);
-  const bestPaceStr=bestPace>0?fmt(bestPace):"4:52";
-  const weekKm=[8,0,10,0,5,14,0];const maxKm=14;
+  const bestPaceStr=bestPace>0?fmt(bestPace):"—";
+  const rDAY=86400000;const rNow=Date.now();const rDow=new Date().getDay();const rMon=rDow===0?6:rDow-1;
+  const weekKm=Array.from({length:7},(_,i)=>{const d=new Date();d.setHours(0,0,0,0);const t=d.getTime()-(rMon-i)*rDAY;return runLogs.filter(l=>(l._id||0)>=t&&(l._id||0)<t+rDAY).reduce((a,l)=>a+(l.distKm||0),0);});
+  const thisWeekKm=weekKm.reduce((a,b)=>a+b,0);const maxKm=Math.max(...weekKm,1);const rTodayIdx=rMon;
 
   if(screen==="gps")return <GPSRunTracker onSave={r=>{addLog(r);setScreen("home");}} onClose={()=>setScreen("home")}/>;
   if(screen==="manual")return <ManualRunLogger onSave={r=>{addLog(r);setScreen("home");}} onClose={()=>setScreen("home")}/>;
@@ -1351,7 +1359,7 @@ function RunningTab({logs,addLog,deleteLog}){
     <div style={{padding:"20px 16px 100px",overflowY:"auto",minHeight:"100vh"}}>
       <div style={{marginBottom:20}}><div style={{fontSize:34,fontWeight:900,color:T.text1,marginBottom:4,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.02em"}}>Running</div><div style={{fontSize:13,color:T.text2}}>GPS tracking · pace · zones</div></div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:16}}>
-        {[{val:`${totalKm.toFixed(0)}km`,sub:"Distance"},{val:`${runLogs.length+4}`,sub:"Runs"},{val:bestPaceStr,sub:"Best Pace"}].map((m,i)=>(
+        {[{val:totalKm>0?`${totalKm.toFixed(1)}km`:"0km",sub:"Distance"},{val:`${runLogs.length}`,sub:"Runs"},{val:bestPaceStr,sub:"Best Pace"}].map((m,i)=>(
           <div key={i} style={{background:T.card,borderRadius:14,padding:"13px 14px",border:`1px solid ${T.border}`}}>
             <div style={{fontSize:20,fontWeight:800,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif"}}>{m.val}</div>
             <div style={{fontSize:10,color:T.text2,marginTop:3,letterSpacing:"0.04em"}}>{m.sub.toUpperCase()}</div>
@@ -1359,12 +1367,12 @@ function RunningTab({logs,addLog,deleteLog}){
         ))}
       </div>
       <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:"16px 18px",marginBottom:16}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><div style={{fontSize:13,fontWeight:700,color:T.text1}}>Weekly mileage</div><div style={{fontSize:14,fontWeight:800,color:T.orange,fontFamily:"'Barlow Condensed',sans-serif"}}>37km</div></div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><div style={{fontSize:13,fontWeight:700,color:T.text1}}>Weekly mileage</div><div style={{fontSize:14,fontWeight:800,color:T.orange,fontFamily:"'Barlow Condensed',sans-serif"}}>{thisWeekKm>0?`${thisWeekKm.toFixed(1)}km`:"0km"}</div></div>
         <div style={{display:"flex",alignItems:"flex-end",gap:6,height:64}}>
           {["M","T","W","T","F","S","S"].map((d,i)=>(
             <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5,height:"100%"}}>
-              <div style={{flex:1,display:"flex",alignItems:"flex-end",width:"100%"}}><div style={{width:"100%",background:weekKm[i]>0?T.orange:T.border,borderRadius:"3px 3px 0 0",height:`${(weekKm[i]/maxKm)*100}%`,minHeight:weekKm[i]>0?4:2,opacity:i===4?1:0.6}}/></div>
-              <span style={{fontSize:10,color:i===4?T.text1:T.text2,fontWeight:i===4?700:500}}>{d}</span>
+              <div style={{flex:1,display:"flex",alignItems:"flex-end",width:"100%"}}><div style={{width:"100%",background:weekKm[i]>0?T.orange:T.border,borderRadius:"3px 3px 0 0",height:`${Math.max((weekKm[i]/maxKm)*100,weekKm[i]>0?6:2)}%`,opacity:i===rTodayIdx?1:0.55}}/></div>
+              <span style={{fontSize:10,color:i===rTodayIdx?T.text1:T.text2,fontWeight:i===rTodayIdx?700:500}}>{d}</span>
             </div>
           ))}
         </div>
@@ -1592,6 +1600,82 @@ function TrainingTab({logs,addLog,deleteLog}){
   );
 }
 
+// ─── SESSION DETAIL ──────────────────────────────────────────────────────────
+function SessionDetail({log,onClose}){
+  const typeColor={HYROX:T.purple,STRENGTH:T.orange,CUSTOM:T.blue,RUN:T.green,CARDIO:T.red};
+  const tc=typeColor[log.type]||T.orange;
+  return(
+    <div style={{padding:"20px 16px 100px",overflowY:"auto",minHeight:"100vh"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+        <button onClick={onClose} style={sBtnStyle}>←</button>
+        <div style={{flex:1}}>
+          <div style={{fontSize:26,fontWeight:900,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.03em",lineHeight:1}}>{log.name}</div>
+          <div style={{fontSize:12,color:T.text2,marginTop:4}}>{log.date} · {fmt(log.duration||0)}</div>
+        </div>
+        <div style={{background:`rgba(${tc===T.orange?"212,224,32":tc===T.green?"61,191,130":tc===T.purple?"139,127,240":tc===T.blue?"91,156,246":"224,88,88"},0.15)`,border:`1px solid ${tc}55`,borderRadius:10,padding:"5px 12px",fontSize:11,fontWeight:800,color:tc,letterSpacing:"0.06em"}}>{log.type}</div>
+      </div>
+
+      {/* Run stats */}
+      {log.type==="RUN"&&(
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:24}}>
+          {[{val:log.distKm?`${log.distKm}km`:"—",label:"Distance"},{val:log.pace||"—",label:"Pace / km"},{val:log.zone||"—",label:"Zone"}].map((m,i)=>(
+            <div key={i} style={{background:T.card,borderRadius:14,padding:"14px 12px",textAlign:"center",border:`1px solid ${T.border}`}}>
+              <div style={{fontSize:22,fontWeight:900,color:T.orange,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1}}>{m.val}</div>
+              <div style={{fontSize:10,color:T.text2,marginTop:6,letterSpacing:"0.05em"}}>{m.label.toUpperCase()}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Strength/custom exercises */}
+      {log.exercises&&log.exercises.length>0&&(
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {log.exercises.map((ex,ei)=>(
+            <div key={ei} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden"}}>
+              <div style={{padding:"13px 16px",background:T.surface,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{fontSize:15,fontWeight:700,color:T.text1}}>{ex.name}</div>
+                <div style={{fontSize:11,color:T.text2}}>{ex.setLogs?.length||0} sets logged</div>
+              </div>
+              {ex.setLogs&&ex.setLogs.length>0?(
+                <div>
+                  {ex.setLogs.map((s,si)=>(
+                    <div key={si} style={{display:"flex",alignItems:"center",padding:"11px 16px",borderBottom:si<ex.setLogs.length-1?`1px solid ${T.border}`:"none",gap:12}}>
+                      <div style={{width:22,height:22,borderRadius:"50%",background:T.greenL,border:`1px solid ${T.green}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:T.green,flexShrink:0}}>{si+1}</div>
+                      <div style={{flex:1,display:"flex",gap:8,alignItems:"center"}}>
+                        <span style={{fontSize:16,fontWeight:800,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",minWidth:52}}>{s.reps} reps</span>
+                        <span style={{fontSize:10,color:T.text3}}>·</span>
+                        <span style={{fontSize:16,fontWeight:800,color:T.orange,fontFamily:"'Barlow Condensed',sans-serif"}}>{s.weight&&s.weight!=="BW"?`${s.weight} kg`:"Bodyweight"}</span>
+                      </div>
+                      {s.duration>0&&<span style={{fontSize:10,color:T.text3,flexShrink:0}}>{fmtMs(s.duration)}</span>}
+                    </div>
+                  ))}
+                </div>
+              ):(
+                <div style={{padding:"12px 16px",fontSize:12,color:T.text3}}>No sets recorded for this exercise</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Hyrox station logs */}
+      {log.stationLogs&&log.stationLogs.length>0&&(
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {log.stationLogs.map((st,i)=>(
+            <div key={i} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:13,fontWeight:700,color:T.text1}}>{st.name}</div>
+                {st.weight&&<div style={{fontSize:11,color:T.text2,marginTop:2}}>{st.weight}kg</div>}
+              </div>
+              {st.split&&<div style={{fontSize:16,fontWeight:800,color:T.orange,fontFamily:"'Barlow Condensed',sans-serif"}}>{st.split}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── HOME TAB ────────────────────────────────────────────────────────────────
 const SecHead=({children,accent=T.orange})=>(
   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,marginTop:32}}>
@@ -1609,6 +1693,7 @@ function HomeTab({logs,setTab,profile,user}){
   const [insightScreen,setInsightScreen]=useState(false);
   const [period,setPeriod]=useState("week");
   const [aiData,setAiData]=useState(null);const [aiLoading,setAiLoading]=useState(false);
+  const [selectedSession,setSelectedSession]=useState(null);
 
   const DAY=86400000;
   const now=Date.now();
@@ -1685,6 +1770,8 @@ function HomeTab({logs,setTab,profile,user}){
     }catch{setAiData({overview:"Add your API key to unlock AI coaching.",runningInsights:[],strengthInsights:[],hyroxReadiness:"",weeklyFocus:[],longTermGoals:[]});}
     setAiLoading(false);
   };
+
+  if(selectedSession)return <SessionDetail log={selectedSession} onClose={()=>setSelectedSession(null)}/>;
 
   // ── INSIGHTS SCREEN ──────────────────────────────────────────────────────────
   if(insightScreen)return(
@@ -1964,22 +2051,41 @@ function HomeTab({logs,setTab,profile,user}){
         ))}
       </div>
 
-      {/* RECENT ACTIVITY */}
-      <SecHead accent={T.text3}>RECENT ACTIVITY</SecHead>
-      <div style={{background:T.card,borderRadius:18,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-        {feed.map((l,i)=>(
-          <div key={i}>{i>0&&<Divider/>}
-            <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px"}}>
-              <TypeBadge type={l.type}/>
-              <div style={{flex:1}}>
-                <div style={{fontSize:14,fontWeight:700,color:T.text1}}>{l.name}</div>
-                <div style={{fontSize:11,color:T.text2,marginTop:2}}>{l.date} · {l.detail}</div>
-              </div>
-              <div style={{fontSize:14,fontWeight:800,color:T.text2,fontFamily:"'Barlow Condensed',sans-serif"}}>{fmt(l.duration||0)}</div>
-            </div>
-          </div>
-        ))}
+      {/* MY SESSIONS */}
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,marginTop:32}}>
+        <div style={{width:4,height:20,background:T.orange,borderRadius:3,flexShrink:0}}/>
+        <span style={{fontSize:14,fontWeight:800,color:T.text1,letterSpacing:"0.07em",flex:1}}>MY SESSIONS</span>
+        <span style={{fontSize:12,color:T.text2}}>{logs.length} total</span>
       </div>
+      {logs.length===0?(
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:"24px 20px",textAlign:"center"}}>
+          <div style={{fontSize:14,color:T.text2}}>No sessions logged yet</div>
+          <div style={{fontSize:12,color:T.text3,marginTop:6}}>Start a workout or log a run to see it here</div>
+        </div>
+      ):(
+        <div style={{background:T.card,borderRadius:18,border:`1px solid ${T.border}`,overflow:"hidden"}}>
+          {logs.slice(0,8).map((l,i)=>(
+            <div key={l._id||i}>{i>0&&<Divider/>}
+              <button onClick={()=>setSelectedSession(l)} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"14px 16px",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
+                <TypeBadge type={l.type}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:14,fontWeight:700,color:T.text1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.name}</div>
+                  <div style={{fontSize:11,color:T.text2,marginTop:2}}>{l.date} · {l.detail}</div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                  <div style={{fontSize:13,fontWeight:800,color:T.text2,fontFamily:"'Barlow Condensed',sans-serif"}}>{fmt(l.duration||0)}</div>
+                  <span style={{fontSize:14,color:T.text3}}>›</span>
+                </div>
+              </button>
+            </div>
+          ))}
+          {logs.length>8&&(
+            <div style={{padding:"12px 16px",borderTop:`1px solid ${T.border}`,textAlign:"center"}}>
+              <span style={{fontSize:12,color:T.text2}}>{logs.length-8} more sessions</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -2176,6 +2282,7 @@ export default function App() {
   const [session, setSession] = useState(undefined); // undefined = loading
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [devOnboard, setDevOnboard] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
@@ -2201,7 +2308,8 @@ export default function App() {
     );
   }
 
-  if (!session) return <Auth />;
+  if (devOnboard) return <Onboarding user={{id:"dev-preview"}} onComplete={()=>setDevOnboard(false)}/>;
+  if (!session) return <Auth onDevMode={()=>setDevOnboard(true)}/>;
   if (!profile?.onboarded) return <Onboarding user={session.user} onComplete={() => setProfile({ onboarded: true })} />;
   return <MainApp user={session.user} />;
 }
