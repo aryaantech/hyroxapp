@@ -1085,7 +1085,7 @@ function HyroxTab({logs,addLog,deleteLog}){
     <div style={{padding:"20px 16px 100px",overflowY:"auto",minHeight:"100vh"}}>
       <div style={{marginBottom:0}}><div style={{fontSize:34,fontWeight:900,color:T.text1,marginBottom:4,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.02em"}}>HYROX</div><div style={{fontSize:13,color:T.text2,marginBottom:14}}>Select your competition division</div></div>
       <div style={{borderRadius:18,overflow:"hidden",marginBottom:20,position:"relative",height:180}}>
-        <img src="/hyrox-hero.jpg" alt="Hyrox" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center 30%",display:"block"}}/>
+        <img src="/hyrox.jpg" alt="Hyrox" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center 30%",display:"block"}}/>
         <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom,rgba(13,15,9,0) 40%,rgba(13,15,9,0.7) 100%)"}}/>
       </div>
       {hyroxLogs.length>0&&<>
