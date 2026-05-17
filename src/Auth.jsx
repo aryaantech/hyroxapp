@@ -9,7 +9,7 @@ const T = {
 };
 
 const inp = {
-  width:"100%", background:T.surface, border:`1px solid ${T.borderM}`,
+  width:"100%", background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)",
   borderRadius:14, padding:"16px 18px", color:T.text1, fontSize:16,
   fontFamily:"'Barlow',sans-serif", outline:"none", boxSizing:"border-box",
 };
@@ -21,7 +21,7 @@ const btn = (bg, color) => ({
 });
 
 export default function Auth() {
-  const [mode, setMode] = useState("signin"); // signin | signup
+  const [mode, setMode] = useState("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -30,9 +30,7 @@ export default function Auth() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    setLoading(true);
-    setError("");
-    setMessage("");
+    setLoading(true); setError(""); setMessage("");
     if (mode === "signup") {
       const { error } = await supabase.auth.signUp({ email, password });
       if (error) setError(error.message);
@@ -54,20 +52,37 @@ export default function Auth() {
   }
 
   return (
-    <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"24px",fontFamily:"'Barlow',sans-serif"}}>
-      <div style={{width:"100%",maxWidth:390}}>
+    <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",maxWidth:430,margin:"0 auto",fontFamily:"'Barlow',sans-serif",position:"relative",overflow:"hidden"}}>
 
-        {/* Logo */}
-        <div style={{textAlign:"center",marginBottom:48}}>
-          <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:64,height:64,background:T.orange,borderRadius:20,marginBottom:20}}>
-            <span style={{fontSize:32,filter:"brightness(0)"}}>⚡</span>
+      {/* Hero image */}
+      <div style={{position:"relative",height:"46vh",minHeight:280,flexShrink:0,overflow:"hidden"}}>
+        <img
+          src="/gym.jpg"
+          alt=""
+          style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center 30%",display:"block"}}
+        />
+        {/* Dark gradient overlay — stronger at bottom so form blends in */}
+        <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom, rgba(13,15,9,0.3) 0%, rgba(13,15,9,0.15) 40%, rgba(13,15,9,0.85) 80%, #0D0F09 100%)"}}/>
+
+        {/* FORGE branding over image */}
+        <div style={{position:"absolute",bottom:28,left:24,right:24}}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <div style={{width:44,height:44,background:T.orange,borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <span style={{fontSize:24,filter:"brightness(0)"}}>⚡</span>
+            </div>
+            <div>
+              <div style={{fontSize:34,fontWeight:900,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.06em",lineHeight:1}}>FORGE</div>
+              <div style={{fontSize:11,color:"rgba(245,245,240,0.6)",marginTop:3,letterSpacing:"0.1em",fontWeight:600}}>HYROX & FITNESS TRACKER</div>
+            </div>
           </div>
-          <div style={{fontSize:36,fontWeight:900,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.04em",lineHeight:1}}>FORGE</div>
-          <div style={{fontSize:13,color:T.text2,marginTop:8,letterSpacing:"0.08em"}}>HYROX TRAINING</div>
         </div>
+      </div>
+
+      {/* Form panel */}
+      <div style={{flex:1,padding:"28px 24px 40px",display:"flex",flexDirection:"column"}}>
 
         {/* Tab toggle */}
-        <div style={{display:"flex",background:T.surface,borderRadius:14,padding:4,marginBottom:28,border:`1px solid ${T.border}`}}>
+        <div style={{display:"flex",background:T.surface,borderRadius:14,padding:4,marginBottom:24,border:`1px solid ${T.border}`}}>
           {["signin","signup"].map(m => (
             <button key={m} onClick={()=>{setMode(m);setError("");setMessage("");}} style={{
               flex:1,padding:"11px",borderRadius:11,border:"none",cursor:"pointer",
@@ -96,7 +111,7 @@ export default function Auth() {
           {message && <div style={{color:T.orange,fontSize:13,textAlign:"center",padding:"10px",background:T.orangeL,borderRadius:10}}>{message}</div>}
 
           <button type="submit" disabled={loading} style={{...btn(T.orange,"#0D0F09"),marginTop:4,opacity:loading?0.6:1}}>
-            {loading ? "..." : mode === "signin" ? "SIGN IN" : "CREATE ACCOUNT"}
+            {loading ? "…" : mode === "signin" ? "SIGN IN" : "CREATE ACCOUNT"}
           </button>
         </form>
 
@@ -117,6 +132,10 @@ export default function Auth() {
           </svg>
           CONTINUE WITH GOOGLE
         </button>
+
+        <div style={{marginTop:"auto",paddingTop:24,textAlign:"center"}}>
+          <span style={{fontSize:11,color:T.text2,letterSpacing:"0.04em"}}>Built for Hyrox competitors</span>
+        </div>
       </div>
     </div>
   );

@@ -979,6 +979,7 @@ function HyroxTab({logs,addLog,deleteLog}){
   const [mode,setMode]=useState(null);
   const [simActive,setSimActive]=useState(false);
   const [simPaused,setSimPaused]=useState(false);
+  const [showSimExit,setShowSimExit]=useState(false);
   const [station,setStation]=useState(0);
   const [phase,setPhase]=useState("run");
   const [elapsed,setElapsed]=useState(0);
@@ -1020,8 +1021,9 @@ function HyroxTab({logs,addLog,deleteLog}){
     const w=mode!=="Custom"?HYROX_MODES[mode].weights[station]:"—";
     const splitElapsed=elapsed-lastSplit;
     return(
+      <>
       <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",padding:"16px 20px 0"}}>
-        <button onClick={()=>setSimActive(false)} style={{...sBtnStyle,alignSelf:"flex-start",marginBottom:16}}>←</button>
+        <button onClick={()=>setShowSimExit(true)} style={{...sBtnStyle,alignSelf:"flex-start",marginBottom:16}}>←</button>
         <div style={{textAlign:"center",marginBottom:4}}>
           <span style={{fontSize:11,fontWeight:700,color:T.text2,letterSpacing:"0.1em"}}>{isRun?`RUN ${station+1} OF 8`:`STATION ${station+1} OF 8`}</span>
         </div>
@@ -1056,10 +1058,20 @@ function HyroxTab({logs,addLog,deleteLog}){
           <Btn onClick={next} disabled={simPaused} color={simPaused?T.text3:T.orange} style={{fontSize:15,padding:15,letterSpacing:"0.06em",fontFamily:"'Barlow Condensed',sans-serif"}}>{simPaused?"⏸ PAUSED":isRun?"RUN DONE →":station<7?"STATION DONE →":"FINISH RACE"}</Btn>
           <div style={{display:"flex",gap:10}}>
             <button onClick={()=>setSimPaused(p=>!p)} style={{flex:1,padding:"13px",background:simPaused?T.orangeL:T.card,border:`1px solid ${simPaused?T.orange:T.borderM}`,borderRadius:50,color:simPaused?T.orange:T.text2,fontSize:13,fontWeight:800,cursor:"pointer",letterSpacing:"0.05em",fontFamily:"'Barlow Condensed',sans-serif"}}>{simPaused?"▶ RESUME":"⏸ PAUSE"}</button>
-            <GhostBtn onClick={()=>setSimActive(false)} style={{flex:1}}>Quit</GhostBtn>
+            <GhostBtn onClick={()=>setShowSimExit(true)} style={{flex:1}}>Quit</GhostBtn>
           </div>
         </div>
       </div>
+      {showSimExit&&<ExitConfirmModal
+        onSave={()=>{
+          const finalLogs=[...stationLogs];
+          addLog({type:"HYROX",name:`${mode} Simulation`,duration:elapsed,date:today(),detail:`${stationLogs.length} splits logged`,mode,stationLogs:finalLogs});
+          setSimActive(false);setShowSimExit(false);setStation(0);setPhase("run");
+        }}
+        onDiscard={()=>{setSimActive(false);setShowSimExit(false);setStation(0);setPhase("run");}}
+        onCancel={()=>setShowSimExit(false)}
+      />}
+      </>
     );
   }
 
@@ -1593,63 +1605,80 @@ const TypeBadge=({type})=>{
   return <div style={{width:40,height:40,background:T.surface,border:`1px solid ${T.borderM}`,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0,filter:"grayscale(1) brightness(1.5)"}}>{s.emoji}</div>;
 };
 
-function HomeTab({logs,setTab}){
+function HomeTab({logs,setTab,profile,user}){
   const [insightScreen,setInsightScreen]=useState(false);
   const [period,setPeriod]=useState("week");
   const [aiData,setAiData]=useState(null);const [aiLoading,setAiLoading]=useState(false);
 
-  const demo=[
-    {type:"HYROX",name:"Race Simulation",date:"Wed",detail:"8 stations",duration:4122},
-    {type:"RUN",name:"Easy Run",date:"Tue",detail:"8km · 4:52/km",duration:2340},
-    {type:"STRENGTH",name:"Lower Strength",date:"Mon",detail:"16/16 sets",duration:3600},
-  ];
-  const feed=[...logs,...demo].slice(0,6);
+  const DAY=86400000;
+  const now=Date.now();
+  const weekAgo=now-7*DAY;
+
+  const feed=logs.slice(0,6);
   const runLogs=logs.filter(l=>l.type==="RUN");
   const trainLogs=logs.filter(l=>["STRENGTH","CUSTOM"].includes(l.type));
   const hyroxLogs=logs.filter(l=>l.type==="HYROX");
-  const totalKm=runLogs.reduce((a,l)=>a+(l.distKm||0),0)+37;
+  const totalKm=runLogs.reduce((a,l)=>a+(l.distKm||0),0);
   const sLogs=logs.filter(l=>["STRENGTH","CUSTOM","HYROX"].includes(l.type));
   const totalSets=sLogs.reduce((a,l)=>a+parseInt(l.detail?.split("/")[0]||0),0);
-  const weeklySessions=6+logs.length;
-  const avgDuration=sLogs.length?Math.round(sLogs.reduce((a,l)=>a+(l.duration||2700),0)/sLogs.length/60):45;
-  const streak=14+logs.length;
+  const thisWeekLogs=logs.filter(l=>(l._id||0)>weekAgo);
+  const weeklySessions=thisWeekLogs.length;
   const restDays=Math.max(0,7-Math.min(weeklySessions,7));
-  const consistencyPct=Math.min(Math.round(weeklySessions/5*100),100);
 
-  const WEEK_BARS=[
-    {label:"Monday",   short:"M",duration:3600},
-    {label:"Tuesday",  short:"T",duration:2340},
-    {label:"Wednesday",short:"W",duration:4122},
-    {label:"Thursday", short:"T",duration:0},
-    {label:"Friday",   short:"F",duration:3200},
-    {label:"Saturday", short:"S",duration:5400},
-    {label:"Sunday",   short:"S",duration:2100},
-  ];
-  const MONTH_BARS=[
-    {label:"Week 1",sessions:5,total:14400},
-    {label:"Week 2",sessions:4,total:11700},
-    {label:"Week 3",sessions:6,total:17280},
-    {label:"This week",sessions:weeklySessions,total:20760,current:true},
-  ];
+  const streak=(()=>{
+    if(!logs.length)return 0;
+    const today=new Date();today.setHours(0,0,0,0);
+    const logDays=new Set(logs.map(l=>{const d=new Date(l._id||0);d.setHours(0,0,0,0);return d.getTime();}));
+    let c=0,d=today.getTime();
+    while(logDays.has(d)){c++;d-=DAY;}
+    return c;
+  })();
+
+  const bestRun=runLogs.length>0?runLogs.reduce((best,l)=>{
+    if(!l.pace)return best;
+    const[m,s]=l.pace.split(":").map(Number);const secs=m*60+s;
+    if(!best||secs<best.secs)return{pace:l.pace,secs};return best;
+  },null):null;
+
+  // Week bars — Mon–Sun, this calendar week
+  const todayDow=new Date().getDay();
+  const monOffset=todayDow===0?6:todayDow-1;
+  const WEEK_SHORT=["M","T","W","T","F","S","S"];
+  const todayBarIdx=monOffset;
+  const WEEK_BARS=Array.from({length:7},(_,i)=>{
+    const dayTs=new Date();dayTs.setHours(0,0,0,0);
+    const targetTs=dayTs.getTime()-(monOffset-i)*DAY;
+    const dayLogs=logs.filter(l=>(l._id||0)>=targetTs&&(l._id||0)<targetTs+DAY);
+    return{short:WEEK_SHORT[i],duration:dayLogs.reduce((a,l)=>a+(l.duration||0),0)};
+  });
+
+  // Month bars — last 4 rolling weeks
+  const MONTH_BARS=Array.from({length:4},(_,i)=>{
+    const wStart=now-(3-i)*7*DAY;const wEnd=wStart+7*DAY;
+    const wLogs=logs.filter(l=>(l._id||0)>=wStart&&(l._id||0)<wEnd);
+    return{label:i===3?"This week":`Week -${3-i}`,sessions:wLogs.length,total:wLogs.reduce((a,l)=>a+(l.duration||0),0),current:i===3};
+  });
+
   const wMaxDur=Math.max(...WEEK_BARS.map(d=>d.duration),1);
   const mMaxTotal=Math.max(...MONTH_BARS.map(d=>d.total),1);
 
   const improving=[
-    {icon:"🏃",label:"Running pace",detail:"4:52/km — personal best this month",delta:"-6 seconds",c:T.green},
-    {icon:"📈",label:"Weekly volume",detail:"6 sessions this week vs 4 last week",delta:"+2 sessions",c:T.green},
-    {icon:"🔥",label:"Day streak",detail:`${streak} consecutive active days`,delta:`${streak} days`,c:T.orange},
-    {icon:"🏋️",label:"Distance covered",detail:`${totalKm.toFixed(0)}km total — up 5km vs last week`,delta:"+5km",c:T.blue},
-  ];
+    bestRun&&{icon:"🏃",label:"Running pace",detail:`Best: ${bestRun.pace}/km across ${runLogs.length} logged run${runLogs.length!==1?"s":""}`,delta:bestRun.pace,c:T.green},
+    weeklySessions>=3&&{icon:"📈",label:"Weekly consistency",detail:`${weeklySessions} sessions in the last 7 days`,delta:`${weeklySessions} sessions`,c:T.green},
+    streak>0&&{icon:"🔥",label:"Day streak",detail:`${streak} consecutive active day${streak!==1?"s":""}`,delta:`${streak} day${streak!==1?"s":""}`,c:T.orange},
+    totalKm>0&&{icon:"📍",label:"Distance covered",detail:`${totalKm.toFixed(1)}km total across all logged runs`,delta:`${totalKm.toFixed(0)}km`,c:T.blue},
+  ].filter(Boolean);
+
   const needsWork=[
-    {icon:"⚡",label:"High intensity runs",detail:"No Zone 5 intervals logged this week",action:"Add a sprint session"},
-    {icon:"😴",label:"Recovery days",detail:restDays===0?"No rest days this week — consider scheduling one":"Good recovery balance this week",action:"Aim for 1–2 rest days per week"},
-    {icon:"🏁",label:"Hyrox station drill",detail:"Burpee broad jump needs isolated practice",action:"10 minute daily drill"},
+    {icon:"⚡",label:"High intensity runs",detail:runLogs.filter(l=>l.zone==="Z4"||l.zone==="Z5").length===0?"No Zone 4–5 runs logged yet":"Good intensity mix — keep it up",action:"Add a tempo or interval run"},
+    {icon:"😴",label:"Recovery days",detail:restDays===0?"No rest days this week — your body needs recovery":"Rest days in check this week",action:"Aim for 1–2 rest days per week"},
+    {icon:"🏁",label:"Hyrox station work",detail:hyroxLogs.length===0?"No Hyrox simulations logged yet":"Keep drilling your weakest stations",action:"Run a Hyrox simulation"},
   ];
 
   const fetchAI=async()=>{
     if(aiData)return;setAiLoading(true);
     try{
-      const summary=`Total sessions: ${logs.length+6}, runs: ${runLogs.length+4}, strength: ${trainLogs.length}, hyrox: ${hyroxLogs.length+2}. Total km: ${totalKm.toFixed(0)}. Total sets: ${totalSets}. Streak: ${streak} days.`;
+      const summary=`Total sessions: ${logs.length}, runs: ${runLogs.length}, strength: ${trainLogs.length}, hyrox: ${hyroxLogs.length}. Total km: ${totalKm.toFixed(1)}. Total sets: ${totalSets}. Streak: ${streak} days.`;
       const res=await fetch("/api/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:`You are an elite S&C and endurance coach. Give a concise performance review.\n\n${summary}\n\nReturn ONLY valid JSON:\n{"overview":"2-3 sentences","runningInsights":["...","..."],"strengthInsights":["...","..."],"hyroxReadiness":"paragraph","weeklyFocus":["...","...","..."],"longTermGoals":["...","..."]}`}]})});
       const d=await res.json();const txt=d.content?.map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
       setAiData(JSON.parse(txt));
@@ -1678,7 +1707,7 @@ function HomeTab({logs,setTab}){
 
       {/* Summary strip */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:4}}>
-        {[{v:weeklySessions,l:"Sessions",c:T.orange},{v:`${totalKm.toFixed(0)}km`,l:"Distance",c:T.green},{v:`${streak}d`,l:"Streak",c:T.purple}].map((m,i)=>(
+        {[{v:weeklySessions||0,l:"Sessions",c:T.orange},{v:totalKm>0?`${totalKm.toFixed(0)}km`:"0km",l:"Distance",c:T.green},{v:streak>0?`${streak}d`:"0d",l:"Streak",c:T.purple}].map((m,i)=>(
           <div key={i} style={{background:T.card,borderRadius:16,padding:"16px 12px",textAlign:"center",border:`1px solid ${T.border}`}}>
             <div style={{fontSize:28,fontWeight:900,color:m.c,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1}}>{m.v}</div>
             <div style={{fontSize:11,color:T.text1,marginTop:6,fontWeight:600}}>{m.l}</div>
@@ -1693,7 +1722,7 @@ function HomeTab({logs,setTab}){
           <div style={{display:"flex",gap:6,alignItems:"flex-end",height:110,marginBottom:10}}>
             {WEEK_BARS.map((d,i)=>{
               const h=d.duration>0?Math.max((d.duration/wMaxDur)*100,12):3;
-              const isToday=i===4;
+              const isToday=i===todayBarIdx;
               return(
                 <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5,height:"100%"}}>
                   {d.duration>0
@@ -1734,12 +1763,16 @@ function HomeTab({logs,setTab}){
       {/* TIME PER DISCIPLINE */}
       <SecHead accent={T.green}>TIME PER DISCIPLINE ⏱️</SecHead>
       <div style={{background:T.card,borderRadius:18,padding:"18px 16px",border:`1px solid ${T.border}`,marginBottom:4}}>
-        {[
-          {label:"Strength Training",emoji:"🏋️",duration:3*3600+2700,color:T.orange},
-          {label:"Running",emoji:"🏃",duration:2340+1800,color:T.green},
-          {label:"Hyrox Training",emoji:"🏁",duration:4122,color:T.purple},
-        ].map((d,i,arr)=>{
-          const total=arr.reduce((s,x)=>s+x.duration,0);
+        {(()=>{
+          const disciplines=[
+            {label:"Strength Training",emoji:"🏋️",duration:logs.filter(l=>["STRENGTH","CUSTOM"].includes(l.type)).reduce((a,l)=>a+(l.duration||0),0),color:T.orange},
+            {label:"Running",emoji:"🏃",duration:runLogs.reduce((a,l)=>a+(l.duration||0),0),color:T.green},
+            {label:"Hyrox Training",emoji:"🏁",duration:hyroxLogs.reduce((a,l)=>a+(l.duration||0),0),color:T.purple},
+          ];
+          const total=disciplines.reduce((s,x)=>s+x.duration,0)||1;
+          return disciplines;
+        })().map((d,i,arr)=>{
+          const total=arr.reduce((s,x)=>s+x.duration,0)||1;
           const pct=Math.round(d.duration/total*100);
           return(
             <div key={i} style={{marginBottom:i<arr.length-1?18:0}}>
@@ -1843,9 +1876,13 @@ function HomeTab({logs,setTab}){
         <div style={{position:"absolute",top:-40,right:-40,width:120,height:120,background:T.orange,borderRadius:"50%",opacity:0.05}}/>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <div style={{width:44,height:44,background:T.orange,borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:900,color:"#0D0F09",letterSpacing:"0.02em"}}>FX</div>
+            <div style={{width:44,height:44,background:T.orange,borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:900,color:"#0D0F09",letterSpacing:"0.02em"}}>
+              {(profile?.name||user?.email||"F").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2)||"FX"}
+            </div>
             <div>
-              <div style={{fontSize:22,fontWeight:900,color:T.text1,letterSpacing:"0.08em",fontFamily:"'Barlow Condensed',sans-serif"}}>FitnessX</div>
+              <div style={{fontSize:22,fontWeight:900,color:T.text1,letterSpacing:"0.08em",fontFamily:"'Barlow Condensed',sans-serif"}}>
+                {profile?.name?`Hey, ${profile.name.split(" ")[0]}`:"FORGE"}
+              </div>
               <div style={{fontSize:11,color:T.text2,marginTop:1}}>Hyrox & Fitness Tracker</div>
             </div>
           </div>
@@ -1860,10 +1897,10 @@ function HomeTab({logs,setTab}){
       <SecHead>THIS WEEK</SecHead>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:10}}>
         {[
-          {val:`${weeklySessions}`,sub:"Sessions",delta:"↑ 2 vs last week",dc:T.green,ac:T.green},
-          {val:`${totalKm.toFixed(0)}km`,sub:"Distance run",delta:"↑ 5km vs last",dc:T.green,ac:T.orange},
-          {val:"4:52",sub:"Best kilometre pace",delta:"↓ 6 seconds · new PR",dc:T.green,ac:T.purple},
-          {val:`${2+hyroxLogs.length}`,sub:"Hyrox simulations",delta:hyroxLogs.length>0?"great work":"time to simulate",dc:hyroxLogs.length>0?T.green:T.text2,ac:T.blue},
+          {val:weeklySessions||"0",sub:"Sessions",delta:weeklySessions>0?`${weeklySessions} this week`:"no sessions yet",dc:weeklySessions>0?T.green:T.text2,ac:T.green},
+          {val:totalKm>0?`${totalKm.toFixed(1)}km`:"0km",sub:"Distance run",delta:totalKm>0?`${totalKm.toFixed(0)}km total`:"log a run to track",dc:totalKm>0?T.green:T.text2,ac:T.orange},
+          {val:bestRun?bestRun.pace:"—",sub:"Best kilometre pace",delta:bestRun?"personal best":"log a run to track",dc:bestRun?T.green:T.text2,ac:T.purple},
+          {val:`${hyroxLogs.length}`,sub:"Hyrox simulations",delta:hyroxLogs.length>0?"great work":"time to simulate",dc:hyroxLogs.length>0?T.green:T.text2,ac:T.blue},
         ].map((m,i)=>(
           <div key={i} style={{background:T.card,borderRadius:18,padding:"20px 18px",border:`1px solid ${T.border}`,borderLeft:`3px solid ${m.ac}`}}>
             <div style={{fontSize:38,fontWeight:900,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1,letterSpacing:"-0.01em"}}>{m.val}</div>
@@ -1897,7 +1934,7 @@ function HomeTab({logs,setTab}){
         <div style={{display:"flex",gap:5,alignItems:"flex-end",height:52,borderTop:`1px solid ${T.border}`,paddingTop:10,paddingBottom:14}}>
           {WEEK_BARS.map((d,i)=>{
             const h=d.duration>0?Math.max((d.duration/wMaxDur)*100,14):3;
-            const isToday=i===4;
+            const isToday=i===todayBarIdx;
             return(
               <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,height:"100%"}}>
                 <div style={{flex:1,width:"100%",display:"flex",alignItems:"flex-end"}}>
@@ -1914,9 +1951,9 @@ function HomeTab({logs,setTab}){
       <SecHead accent={T.text2}>ACTIVITY BREAKDOWN</SecHead>
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
         {[
-          {label:"Running",count:runLogs.length+4,unit:"runs",emoji:"🏃",c:T.text1,action:()=>setTab("running")},
-          {label:"Training",count:trainLogs.length+2,unit:"sessions",emoji:"🏋️",c:T.text1,action:()=>setTab("training")},
-          {label:"Hyrox",count:hyroxLogs.length+2,unit:"simulations",emoji:"🏁",c:T.text1,action:()=>setTab("hyrox")},
+          {label:"Running",count:runLogs.length,unit:"runs",emoji:"🏃",c:T.text1,action:()=>setTab("running")},
+          {label:"Training",count:trainLogs.length,unit:"sessions",emoji:"🏋️",c:T.text1,action:()=>setTab("training")},
+          {label:"Hyrox",count:hyroxLogs.length,unit:"simulations",emoji:"🏁",c:T.text1,action:()=>setTab("hyrox")},
         ].map((m,i)=>(
           <button key={i} onClick={m.action} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:"18px 12px",cursor:"pointer",textAlign:"left"}}>
             <div style={{width:36,height:36,background:T.surface,border:`1px solid ${T.borderM}`,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,marginBottom:12,filter:"grayscale(1) brightness(1.4)"}}>{m.emoji}</div>
@@ -1947,25 +1984,160 @@ function HomeTab({logs,setTab}){
   );
 }
 
+// ─── ACCOUNT TAB ─────────────────────────────────────────────────────────────
+function AccountTab({user,profile,onProfileUpdate}){
+  const [editing,setEditing]=useState(false);
+  const [name,setName]=useState(profile?.name||"");
+  const [age,setAge]=useState(String(profile?.age||""));
+  const [weightKg,setWeightKg]=useState(String(profile?.weight_kg||""));
+  const [heightCm,setHeightCm]=useState(String(profile?.height_cm||""));
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState("");
+
+  useEffect(()=>{
+    setName(profile?.name||"");setAge(String(profile?.age||""));
+    setWeightKg(String(profile?.weight_kg||""));setHeightCm(String(profile?.height_cm||""));
+  },[profile]);
+
+  const initials=(profile?.name||user?.email||"?").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
+
+  const save=async()=>{
+    setSaving(true);setErr("");
+    const{error}=await supabase.from("profiles").update({
+      name:name.trim()||null,
+      age:parseInt(age)||null,
+      weight_kg:parseFloat(weightKg)||null,
+      height_cm:parseFloat(heightCm)||null,
+    }).eq("id",user.id);
+    setSaving(false);
+    if(error){setErr(error.message);}
+    else{onProfileUpdate({...profile,name:name.trim(),age:parseInt(age)||null,weight_kg:parseFloat(weightKg)||null,height_cm:parseFloat(heightCm)||null});setEditing(false);}
+  };
+
+  const inpStyle={width:"100%",background:T.surface,border:`1px solid ${T.borderM}`,borderRadius:12,padding:"14px 16px",color:T.text1,fontSize:15,fontFamily:"'Barlow',sans-serif",outline:"none",boxSizing:"border-box"};
+
+  return(
+    <div style={{padding:"20px 16px 100px",overflowY:"auto",minHeight:"100vh"}}>
+
+      {/* Avatar + name */}
+      <div style={{textAlign:"center",paddingTop:12,marginBottom:32}}>
+        <div style={{width:80,height:80,borderRadius:24,background:T.orange,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",fontSize:30,fontWeight:900,color:"#0D0F09",fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.04em"}}>
+          {initials}
+        </div>
+        <div style={{fontSize:26,fontWeight:900,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.03em"}}>{profile?.name||"Athlete"}</div>
+        <div style={{fontSize:13,color:T.text2,marginTop:5}}>{user?.email}</div>
+      </div>
+
+      {/* Stats strip */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:4}}>
+        {[
+          {label:"Age",val:profile?.age?`${profile.age}y`:"—"},
+          {label:"Weight",val:profile?.weight_kg?`${profile.weight_kg}kg`:"—"},
+          {label:"Height",val:profile?.height_cm?`${profile.height_cm}cm`:"—"},
+        ].map((m,i)=>(
+          <div key={i} style={{background:T.card,borderRadius:16,padding:"16px 12px",textAlign:"center",border:`1px solid ${T.border}`}}>
+            <div style={{fontSize:22,fontWeight:900,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1}}>{m.val}</div>
+            <div style={{fontSize:11,color:T.text2,marginTop:6,fontWeight:600,letterSpacing:"0.04em"}}>{m.label.toUpperCase()}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Profile details */}
+      <SecHead>PROFILE</SecHead>
+      {!editing?(
+        <div style={{background:T.card,borderRadius:18,border:`1px solid ${T.border}`,overflow:"hidden",marginBottom:14}}>
+          {[
+            {label:"Full Name",val:profile?.name||"—"},
+            {label:"Age",val:profile?.age?`${profile.age} years`:"—"},
+            {label:"Weight",val:profile?.weight_kg?`${profile.weight_kg} kg`:"—"},
+            {label:"Height",val:profile?.height_cm?`${profile.height_cm} cm`:"—"},
+            {label:"Lifting level",val:profile?.lifting_level?profile.lifting_level.charAt(0).toUpperCase()+profile.lifting_level.slice(1):"—"},
+            {label:"Running level",val:profile?.running_level?profile.running_level.charAt(0).toUpperCase()+profile.running_level.slice(1):"—"},
+            profile?.jog_pace&&{label:"Easy jog pace",val:`${profile.jog_pace}/km`},
+            profile?.jog_distance_km&&{label:"Comfortable distance",val:`${profile.jog_distance_km} km`},
+          ].filter(Boolean).map((row,i,arr)=>(
+            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 18px",borderBottom:i<arr.length-1?`1px solid ${T.border}`:"none"}}>
+              <span style={{fontSize:13,color:T.text2,fontWeight:600}}>{row.label}</span>
+              <span style={{fontSize:14,color:T.text1,fontWeight:700}}>{row.val}</span>
+            </div>
+          ))}
+        </div>
+      ):(
+        <div style={{background:T.card,borderRadius:18,border:`1px solid ${T.border}`,padding:"18px 16px",marginBottom:14}}>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div><div style={{fontSize:11,color:T.text2,fontWeight:700,letterSpacing:"0.08em",marginBottom:8}}>FULL NAME</div><input value={name} onChange={e=>setName(e.target.value)} placeholder="Your name" style={inpStyle}/></div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+              <div><div style={{fontSize:11,color:T.text2,fontWeight:700,letterSpacing:"0.08em",marginBottom:8}}>AGE</div><input value={age} onChange={e=>setAge(e.target.value)} type="number" placeholder="25" style={inpStyle}/></div>
+              <div><div style={{fontSize:11,color:T.text2,fontWeight:700,letterSpacing:"0.08em",marginBottom:8}}>WEIGHT (kg)</div><input value={weightKg} onChange={e=>setWeightKg(e.target.value)} type="number" placeholder="75" style={inpStyle}/></div>
+              <div><div style={{fontSize:11,color:T.text2,fontWeight:700,letterSpacing:"0.08em",marginBottom:8}}>HEIGHT (cm)</div><input value={heightCm} onChange={e=>setHeightCm(e.target.value)} type="number" placeholder="175" style={inpStyle}/></div>
+            </div>
+          </div>
+          {err&&<div style={{color:T.red,fontSize:12,marginTop:10,padding:"8px 12px",background:T.redL,borderRadius:8}}>{err}</div>}
+          <div style={{display:"flex",gap:10,marginTop:16}}>
+            <button onClick={()=>{setEditing(false);setErr("");}} style={{flex:1,padding:"13px",background:"none",border:`1px solid ${T.borderM}`,borderRadius:50,color:T.text2,fontSize:13,fontWeight:700,cursor:"pointer"}}>Cancel</button>
+            <Btn onClick={save} color={T.orange} style={{flex:1}}>{saving?"Saving…":"Save Changes"}</Btn>
+          </div>
+        </div>
+      )}
+
+      {!editing&&<GhostBtn onClick={()=>setEditing(true)} style={{marginBottom:14}}>Edit Profile</GhostBtn>}
+
+      {/* Sign out */}
+      <SecHead accent={T.red}>ACCOUNT</SecHead>
+      <button onClick={()=>supabase.auth.signOut()} style={{width:"100%",padding:"16px",background:T.redL,border:`1px solid ${T.red}44`,borderRadius:50,color:T.red,fontSize:14,fontWeight:800,cursor:"pointer",letterSpacing:"0.05em",fontFamily:"'Barlow Condensed',sans-serif"}}>
+        Sign Out
+      </button>
+    </div>
+  );
+}
+
 // ─── ROOT ────────────────────────────────────────────────────────────────────
 function MainApp({ user }) {
   const [tab,setTab]=useState("home");
-  const [logs,setLogs]=useState([]);
+  const [logs,setLogs]=useState(()=>{
+    try{const s=localStorage.getItem("forge_logs");return s?JSON.parse(s):[];}catch{return[];}
+  });
+  const [profile,setProfile]=useState(null);
+
+  useEffect(()=>{try{localStorage.setItem("forge_logs",JSON.stringify(logs));}catch{};},[logs]);
+
+  useEffect(()=>{
+    if(!user?.id)return;
+    supabase.from("profiles").select("*").eq("id",user.id).single()
+      .then(({data})=>{ if(data) setProfile(data); });
+  },[user?.id]);
+
   const addLog=useCallback(e=>setLogs(p=>[{...e,_id:Date.now()},...p]),[]);
   const deleteLog=useCallback(id=>setLogs(p=>p.filter(l=>l._id!==id&&l.id!==id)),[]);
-  const NAV=[{id:"home",label:"Home",icon:"⚡"},{id:"hyrox",label:"Hyrox",icon:"🏁"},{id:"training",label:"Training",icon:"🏋️"},{id:"running",label:"Running",icon:"🏃"}];
+
+  const initials=(profile?.name||user?.email||"?").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
+  const NAV=[
+    {id:"home",label:"Home",icon:"⚡"},
+    {id:"hyrox",label:"Hyrox",icon:"🏁"},
+    {id:"training",label:"Training",icon:"🏋️"},
+    {id:"running",label:"Running",icon:"🏃"},
+    {id:"account",label:"Account",icon:null},
+  ];
+
   return(
     <div style={{maxWidth:430,margin:"0 auto",minHeight:"100vh",background:T.bg,fontFamily:"'Barlow', sans-serif",color:T.text1}}>
-      {tab==="home"    &&<HomeTab     logs={logs} setTab={setTab}/>}
+      {tab==="home"    &&<HomeTab     logs={logs} setTab={setTab} profile={profile} user={user}/>}
       {tab==="hyrox"   &&<HyroxTab    logs={logs} addLog={addLog} deleteLog={deleteLog}/>}
       {tab==="training"&&<TrainingTab logs={logs} addLog={addLog} deleteLog={deleteLog}/>}
       {tab==="running" &&<RunningTab  logs={logs} addLog={addLog} deleteLog={deleteLog}/>}
+      {tab==="account" &&<AccountTab  user={user} profile={profile} onProfileUpdate={setProfile}/>}
       <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:"rgba(18,20,13,0.96)",borderRadius:"22px 22px 0 0",boxShadow:"0 -1px 0 rgba(255,255,255,0.06), 0 -8px 32px rgba(0,0,0,0.4)",display:"flex",zIndex:100,paddingBottom:16,paddingTop:10,backdropFilter:"blur(20px)"}}>
         {NAV.map((n,idx)=>{const active=tab===n.id;return(
           <button key={n.id} onClick={()=>setTab(n.id)} style={{flex:1,padding:"2px 4px 0",background:"none",border:"none",borderLeft:idx>0?"1px solid rgba(255,255,255,0.07)":"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-            <div style={{width:38,height:38,borderRadius:"50%",background:active?T.orange:"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,transition:"all 0.2s"}}>
-              <span style={{filter:active?"brightness(0)":"grayscale(1) brightness(1.6)",transition:"filter 0.2s"}}>{n.icon}</span>
-            </div>
+            {n.id==="account"?(
+              <div style={{width:38,height:38,borderRadius:"50%",background:active?T.orange:T.card,border:`1px solid ${active?T.orange:T.borderM}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900,color:active?"#0D0F09":T.text2,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.04em",transition:"all 0.2s"}}>
+                {initials}
+              </div>
+            ):(
+              <div style={{width:38,height:38,borderRadius:"50%",background:active?T.orange:"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,transition:"all 0.2s"}}>
+                <span style={{filter:active?"brightness(0)":"grayscale(1) brightness(1.6)",transition:"filter 0.2s"}}>{n.icon}</span>
+              </div>
+            )}
             <span style={{fontSize:9,fontWeight:active?700:400,color:active?T.orange:"rgba(255,255,255,0.5)",letterSpacing:"0.04em",transition:"color 0.2s"}}>{n.label}</span>
           </button>
         );})}
