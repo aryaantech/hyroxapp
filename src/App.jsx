@@ -2099,6 +2099,7 @@ function MainApp({ user }) {
   });
   const [profile,setProfile]=useState(null);
 
+  // Keep localStorage as offline cache
   useEffect(()=>{try{localStorage.setItem("forge_logs",JSON.stringify(logs));}catch{};},[logs]);
 
   useEffect(()=>{
@@ -2107,8 +2108,33 @@ function MainApp({ user }) {
       .then(({data})=>{ if(data) setProfile(data); });
   },[user?.id]);
 
-  const addLog=useCallback(e=>setLogs(p=>[{...e,_id:Date.now()},...p]),[]);
-  const deleteLog=useCallback(id=>setLogs(p=>p.filter(l=>l._id!==id&&l.id!==id)),[]);
+  // On mount: fetch logs from Supabase and merge with any offline-only localStorage entries
+  useEffect(()=>{
+    if(!user?.id)return;
+    supabase.from("workout_logs").select("id,data").eq("user_id",user.id).order("id",{ascending:false})
+      .then(({data,error})=>{
+        if(error||!data)return;
+        const remoteIds=new Set(data.map(r=>r.id));
+        const local=JSON.parse(localStorage.getItem("forge_logs")||"[]");
+        const offline=local.filter(l=>!remoteIds.has(l._id));
+        // Upload offline entries captured while not connected
+        offline.forEach(entry=>{
+          supabase.from("workout_logs").insert({id:entry._id,user_id:user.id,data:entry}).then();
+        });
+        setLogs([...data.map(r=>r.data),...offline]);
+      });
+  },[user?.id]);
+
+  const addLog=useCallback(e=>{
+    const entry={...e,_id:Date.now()};
+    setLogs(p=>[entry,...p]);
+    supabase.from("workout_logs").insert({id:entry._id,user_id:user.id,data:entry}).then();
+  },[user?.id]);
+
+  const deleteLog=useCallback(id=>{
+    setLogs(p=>p.filter(l=>l._id!==id&&l.id!==id));
+    supabase.from("workout_logs").delete().eq("id",id).eq("user_id",user.id).then();
+  },[user?.id]);
 
   const initials=(profile?.name||user?.email||"?").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
   const NAV=[
