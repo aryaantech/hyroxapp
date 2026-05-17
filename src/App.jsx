@@ -1736,6 +1736,7 @@ function HomeTab({logs,setTab,profile,user,deleteLog}){
   const [period,setPeriod]=useState("week");
   const [aiData,setAiData]=useState(null);const [aiLoading,setAiLoading]=useState(false);
   const [selectedSession,setSelectedSession]=useState(null);
+  const [showAllSessions,setShowAllSessions]=useState(false);
 
   const DAY=86400000;
   const now=Date.now();
@@ -1814,6 +1815,41 @@ function HomeTab({logs,setTab,profile,user,deleteLog}){
   };
 
   if(selectedSession)return <SessionDetail log={selectedSession} onDelete={()=>{deleteLog&&deleteLog(selectedSession._id);setSelectedSession(null);}} onClose={()=>setSelectedSession(null)}/>;
+  if(showAllSessions)return(
+    <div style={{padding:"20px 16px 100px",overflowY:"auto",minHeight:"100vh"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+        <button onClick={()=>setShowAllSessions(false)} style={sBtnStyle}>←</button>
+        <div>
+          <div style={{fontSize:26,fontWeight:900,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.04em"}}>MY SESSIONS</div>
+          <div style={{fontSize:12,color:T.text2,marginTop:2}}>{logs.length} total logged</div>
+        </div>
+      </div>
+      {logs.length===0?(
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:"40px 20px",textAlign:"center"}}>
+          <div style={{fontSize:14,color:T.text2}}>No sessions logged yet</div>
+          <div style={{fontSize:12,color:T.text3,marginTop:6}}>Start a workout or log a run to see it here</div>
+        </div>
+      ):(
+        <div style={{background:T.card,borderRadius:18,border:`1px solid ${T.border}`,overflow:"hidden"}}>
+          {logs.map((l,i)=>(
+            <div key={l._id||i}>{i>0&&<Divider/>}
+              <button onClick={()=>setSelectedSession(l)} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"14px 16px",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
+                <TypeBadge type={l.type}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:14,fontWeight:700,color:T.text1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.name}</div>
+                  <div style={{fontSize:11,color:T.text2,marginTop:2}}>{l.date} · {l.detail}</div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                  <div style={{fontSize:13,fontWeight:800,color:T.text2,fontFamily:"'Barlow Condensed',sans-serif"}}>{fmt(l.duration||0)}</div>
+                  <span style={{fontSize:14,color:T.text3}}>›</span>
+                </div>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   // ── INSIGHTS SCREEN ──────────────────────────────────────────────────────────
   if(insightScreen)return(
@@ -2001,42 +2037,41 @@ function HomeTab({logs,setTab,profile,user,deleteLog}){
     <div style={{padding:"20px 16px 100px",overflowY:"auto",minHeight:"100vh"}}>
 
       {/* Header */}
-      <div style={{background:T.surface,borderRadius:22,padding:"20px 20px",marginBottom:4,border:`1px solid ${T.border}`,position:"relative",overflow:"hidden"}}>
-        <div style={{position:"absolute",top:-40,right:-40,width:120,height:120,background:T.orange,borderRadius:"50%",opacity:0.05}}/>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <div style={{width:44,height:44,background:T.orange,borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:900,color:"#0D0F09",letterSpacing:"0.02em"}}>
-              {(profile?.name||user?.email||"F").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2)||"FX"}
-            </div>
-            <div>
-              <div style={{fontSize:22,fontWeight:900,color:T.text1,letterSpacing:"0.08em",fontFamily:"'Barlow Condensed',sans-serif"}}>
-                {profile?.name?`Hey, ${profile.name.split(" ")[0]}`:"FORGE"}
-              </div>
-              <div style={{fontSize:11,color:T.text2,marginTop:1}}>Hyrox & Fitness Tracker</div>
-            </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <div style={{display:"flex",alignItems:"center",gap:11}}>
+          <div style={{width:40,height:40,background:T.orange,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Barlow Condensed',sans-serif",fontSize:18,fontWeight:900,color:"#0D0F09",flexShrink:0}}>
+            {(profile?.name||user?.email||"F").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2)||"FX"}
           </div>
-          <div style={{textAlign:"right",background:T.card,borderRadius:14,padding:"10px 18px",border:`1px solid ${T.border}`}}>
-            <div style={{fontSize:36,fontWeight:900,color:T.orange,lineHeight:1,fontFamily:"'Barlow Condensed',sans-serif"}}>{streak}</div>
-            <div style={{fontSize:9,color:T.text1,marginTop:3,letterSpacing:"0.08em"}}>DAY STREAK</div>
+          <div>
+            <div style={{fontSize:20,fontWeight:900,color:T.text1,letterSpacing:"0.06em",fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1}}>
+              {profile?.name?`HEY, ${profile.name.split(" ")[0].toUpperCase()}`:"FORGE"}
+            </div>
+            <div style={{fontSize:11,color:T.text2,marginTop:3}}>Hyrox & Fitness Tracker</div>
           </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:7,background:streak>0?T.orangeL:"rgba(255,255,255,0.04)",borderRadius:20,padding:"8px 14px",border:`1px solid ${streak>0?T.orange+"44":T.border}`}}>
+          <span style={{fontSize:15,lineHeight:1}}>🔥</span>
+          <span style={{fontSize:20,fontWeight:900,color:streak>0?T.orange:T.text2,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1}}>{streak}</span>
+          <span style={{fontSize:10,color:streak>0?T.orange:T.text2,opacity:0.8,letterSpacing:"0.06em"}}>STREAK</span>
         </div>
       </div>
 
-      {/* THIS WEEK */}
-      <SecHead>THIS WEEK</SecHead>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:10}}>
-        {[
-          {val:weeklySessions||"0",sub:"Sessions",delta:weeklySessions>0?`${weeklySessions} this week`:"no sessions yet",dc:weeklySessions>0?T.green:T.text2,ac:T.green},
-          {val:totalKm>0?`${totalKm.toFixed(1)}km`:"0km",sub:"Distance run",delta:totalKm>0?`${totalKm.toFixed(0)}km total`:"log a run to track",dc:totalKm>0?T.green:T.text2,ac:T.orange},
-          {val:bestRun?bestRun.pace:"—",sub:"Best kilometre pace",delta:bestRun?"personal best":"log a run to track",dc:bestRun?T.green:T.text2,ac:T.purple},
-          {val:`${hyroxLogs.length}`,sub:"Hyrox simulations",delta:hyroxLogs.length>0?"great work":"time to simulate",dc:hyroxLogs.length>0?T.green:T.text2,ac:T.blue},
-        ].map((m,i)=>(
-          <div key={i} style={{background:T.card,borderRadius:18,padding:"20px 18px",border:`1px solid ${T.border}`,borderLeft:`3px solid ${m.ac}`}}>
-            <div style={{fontSize:38,fontWeight:900,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1,letterSpacing:"-0.01em"}}>{m.val}</div>
-            <div style={{fontSize:13,color:T.text1,marginTop:10,fontWeight:600,opacity:0.75,lineHeight:1.3}}>{m.sub}</div>
-            <div style={{fontSize:12,color:m.dc,marginTop:6,fontWeight:700}}>{m.delta}</div>
-          </div>
-        ))}
+      {/* Stats strip */}
+      <div style={{background:T.card,borderRadius:16,border:`1px solid ${T.border}`,overflow:"hidden",marginBottom:4}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)"}}>
+          {[
+            {val:weeklySessions||0,sub:"Sessions",color:T.green},
+            {val:totalKm>0?`${totalKm.toFixed(1)}km`:"0km",sub:"Distance",color:T.orange},
+            {val:bestRun?bestRun.pace:"—",sub:"Best pace",color:T.purple},
+            {val:hyroxLogs.length,sub:"Hyrox",color:T.blue},
+          ].map((m,i)=>(
+            <div key={i} style={{padding:"16px 6px 14px",textAlign:"center",borderRight:i<3?`1px solid ${T.border}`:"none",position:"relative"}}>
+              <div style={{fontSize:22,fontWeight:900,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1}}>{m.val}</div>
+              <div style={{fontSize:9,color:T.text2,marginTop:5,letterSpacing:"0.05em",lineHeight:1.3}}>{m.sub.toUpperCase()}</div>
+              <div style={{position:"absolute",bottom:0,left:"20%",right:"20%",height:2,background:m.color,borderRadius:"2px 2px 0 0"}}/>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* PERFORMANCE INSIGHTS — compact bar chart */}
@@ -2094,36 +2129,19 @@ function HomeTab({logs,setTab,profile,user,deleteLog}){
       </div>
 
       {/* MY SESSIONS */}
-      <SecHead>MY SESSIONS</SecHead>
-      {logs.length===0?(
-        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:"24px 20px",textAlign:"center"}}>
-          <div style={{fontSize:14,color:T.text2}}>No sessions logged yet</div>
-          <div style={{fontSize:12,color:T.text3,marginTop:6}}>Start a workout or log a run to see it here</div>
+      <button onClick={()=>setShowAllSessions(true)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 18px",background:T.card,border:`1px solid ${T.border}`,borderRadius:16,cursor:"pointer",marginTop:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <div style={{width:36,height:36,background:T.orangeL,border:`1px solid ${T.orange}44`,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>📋</div>
+          <div style={{textAlign:"left"}}>
+            <div style={{fontSize:15,fontWeight:800,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.03em"}}>MY SESSIONS</div>
+            <div style={{fontSize:11,color:T.text2,marginTop:2}}>{logs.length} workout{logs.length!==1?"s":""} logged</div>
+          </div>
         </div>
-      ):(
-        <div style={{background:T.card,borderRadius:18,border:`1px solid ${T.border}`,overflow:"hidden"}}>
-          {logs.slice(0,8).map((l,i)=>(
-            <div key={l._id||i}>{i>0&&<Divider/>}
-              <button onClick={()=>setSelectedSession(l)} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"14px 16px",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
-                <TypeBadge type={l.type}/>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:14,fontWeight:700,color:T.text1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.name}</div>
-                  <div style={{fontSize:11,color:T.text2,marginTop:2}}>{l.date} · {l.detail}</div>
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-                  <div style={{fontSize:13,fontWeight:800,color:T.text2,fontFamily:"'Barlow Condensed',sans-serif"}}>{fmt(l.duration||0)}</div>
-                  <span style={{fontSize:14,color:T.text3}}>›</span>
-                </div>
-              </button>
-            </div>
-          ))}
-          {logs.length>8&&(
-            <div style={{padding:"12px 16px",borderTop:`1px solid ${T.border}`,textAlign:"center"}}>
-              <span style={{fontSize:12,color:T.text2}}>{logs.length-8} more sessions</span>
-            </div>
-          )}
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          {logs.length>0&&<div style={{background:T.orange,borderRadius:20,padding:"3px 10px",fontSize:12,fontWeight:800,color:"#0D0F09",fontFamily:"'Barlow Condensed',sans-serif"}}>{logs.length}</div>}
+          <span style={{fontSize:18,color:T.text3}}>›</span>
         </div>
-      )}
+      </button>
     </div>
   );
 }
