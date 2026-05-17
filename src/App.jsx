@@ -2316,11 +2316,14 @@ function MainApp({ user }) {
   );
 }
 
+const DEV_USER = {id:"dev-preview",email:"dev@forge.local"};
+
 export default function App() {
   const [session, setSession] = useState(undefined); // undefined = loading
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [devOnboard, setDevOnboard] = useState(false);
+  const [devApp, setDevApp] = useState(new URLSearchParams(window.location.search).has("dev"));
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
@@ -2346,7 +2349,8 @@ export default function App() {
     );
   }
 
-  if (devOnboard) return <Onboarding user={{id:"dev-preview"}} onComplete={()=>setDevOnboard(false)}/>;
+  if (devApp) return <MainApp user={DEV_USER}/>;
+  if (devOnboard) return <Onboarding user={DEV_USER} onComplete={()=>setDevOnboard(false)}/>;
   if (!session) return <Auth onDevMode={()=>setDevOnboard(true)}/>;
   if (!profile?.onboarded) return <Onboarding user={session.user} onComplete={() => setProfile({ onboarded: true })} />;
   return <MainApp user={session.user} />;
