@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cp /Users/aryaannath/Downloads/forge_app.jsx \"/Users/aryaannath/Hyrox App/src/App.jsx\")",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(mkdir -p \"/Users/aryaannath/Hyrox App/.claude\")",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(curl -s http://localhost:3001/api/claude -X POST -H \"Content-Type: application/json\" -d '{\"model\":\"test\",\"max_tokens\":1,\"messages\":[]}')",
+      "Bash(ls /Users/aryaannath/ | grep -i hyrox)",
+      "Bash(npx expo *)",
+      "Bash(mkdir -p \"/Users/aryaannath/Hyrox App Native\")",
+      "Bash(npx create-expo-app@latest . --template blank)",
+      "Bash(npx create-expo-app@latest . --template blank --name forge)",
+      "Bash(npx create-expo-app@latest forge-native --template blank)",
+      "Bash(node --check \"/Users/aryaannath/Hyrox App/src/App.jsx\")",
+      "Bash(node -e ' *)",
+      "WebSearch",
+      "WebFetch(domain:us.puma.com)",
+      "WebFetch(domain:runreps.com)",
+      "WebFetch(domain:hellohyrox.com)",
+      "Read(//Users/aryaannath/forge-native/**)",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git rm *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}

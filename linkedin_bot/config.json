@@ -1,0 +1,46 @@
+{
+  "credentials": {
+    "email": "YOUR_LINKEDIN_EMAIL",
+    "password": "YOUR_LINKEDIN_PASSWORD"
+  },
+
+  "targeting": {
+    "hashtags": ["#fitness", "#hyrox", "#running", "#crossfit", "#workout"],
+    "keywords": ["hyrox", "hybrid athlete", "functional fitness"],
+    "feed_scroll_depth": 15
+  },
+
+  "limits": {
+    "max_likes_per_session": 30,
+    "max_comments_per_session": 5,
+    "min_delay_between_actions_sec": 8,
+    "max_delay_between_actions_sec": 25,
+    "session_duration_minutes": 20
+  },
+
+  "commenting": {
+    "enabled": true,
+    "min_post_reactions_to_comment": 20,
+    "templates": [
+      "Great post! Really resonates with the community.",
+      "This is such a valuable perspective, thanks for sharing!",
+      "Completely agree — this is so important.",
+      "Really well put. Following for more content like this.",
+      "This is gold. Saving this one.",
+      "Love seeing this kind of content. Keep it up!"
+    ]
+  },
+
+  "scraper": {
+    "min_reactions_for_viral": 100,
+    "min_comments_for_viral": 10,
+    "output_file": "data/viral_posts.json",
+    "max_posts_to_scrape": 50
+  },
+
+  "browser": {
+    "headless": false,
+    "slow_mo_ms": 50,
+    "user_data_dir": "data/browser_profile"
+  }
+}
