@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { supabase } from "./supabase";
+import Auth from "./Auth";
+import Onboarding from "./Onboarding";
 
 const T = {
   bg:"#0D0F09", surface:"#161810", card:"#1E2118",
@@ -1945,7 +1948,7 @@ function HomeTab({logs,setTab}){
 }
 
 // ─── ROOT ────────────────────────────────────────────────────────────────────
-export default function App(){
+function MainApp({ user }) {
   const [tab,setTab]=useState("home");
   const [logs,setLogs]=useState([]);
   const addLog=useCallback(e=>setLogs(p=>[{...e,_id:Date.now()},...p]),[]);
@@ -1969,4 +1972,38 @@ export default function App(){
       </div>
     </div>
   );
+}
+
+export default function App() {
+  const [session, setSession] = useState(undefined); // undefined = loading
+  const [profile, setProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!session) { setProfile(null); return; }
+    setProfileLoading(true);
+    supabase.from("profiles").select("onboarded").eq("id", session.user.id).single()
+      .then(({ data }) => { setProfile(data); setProfileLoading(false); });
+  }, [session]);
+
+  if (session === undefined || profileLoading) {
+    return (
+      <div style={{minHeight:"100vh",background:"#0D0F09",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{width:40,height:40,border:"3px solid rgba(212,224,32,0.2)",borderTopColor:"#D4E020",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    );
+  }
+
+  if (!session) return <Auth />;
+  if (!profile?.onboarded) return <Onboarding user={session.user} onComplete={() => setProfile({ onboarded: true })} />;
+  return <MainApp user={session.user} />;
 }
