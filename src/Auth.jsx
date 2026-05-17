@@ -126,9 +126,9 @@ export default function Auth({ onDevMode }) {
         <div style={{ marginTop:"auto", textAlign:"center" }}>
           <span style={{ fontSize:11, color:T.text2, letterSpacing:"0.04em" }}>Built for Hyrox competitors</span>
           {onDevMode && (
-            <div style={{ marginTop:16 }}>
-              <button onClick={onDevMode} style={{ background:"none", border:"1px solid rgba(255,255,255,0.08)", borderRadius:8, padding:"6px 14px", color:T.text2, fontSize:11, cursor:"pointer", fontFamily:"'Barlow',sans-serif" }}>
-                Dev: Preview Onboarding →
+            <div style={{ marginTop:20 }}>
+              <button onClick={onDevMode} style={{ background:T.orangeL, border:`1px solid ${T.orange}55`, borderRadius:12, padding:"10px 20px", color:T.orange, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"'Barlow',sans-serif", letterSpacing:"0.04em" }}>
+                ⚡ Dev: Preview Onboarding →
               </button>
             </div>
           )}
