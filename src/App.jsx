@@ -1083,7 +1083,27 @@ function HyroxTab({logs,addLog,deleteLog}){
 
   if(!mode)return(
     <div style={{padding:"20px 16px 100px",overflowY:"auto",minHeight:"100vh"}}>
-      <div style={{marginBottom:20}}><div style={{fontSize:34,fontWeight:900,color:T.text1,marginBottom:4,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.02em"}}>HYROX</div><div style={{fontSize:13,color:T.text2}}>Select your competition division</div></div>
+      <div style={{marginBottom:0}}><div style={{fontSize:34,fontWeight:900,color:T.text1,marginBottom:4,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.02em"}}>HYROX</div><div style={{fontSize:13,color:T.text2,marginBottom:14}}>Select your competition division</div></div>
+      <div style={{borderRadius:18,overflow:"hidden",marginBottom:20,position:"relative",height:180}}>
+        <img src="/hyrox-hero.jpg" alt="Hyrox" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center 30%",display:"block"}}/>
+        <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom,rgba(13,15,9,0) 40%,rgba(13,15,9,0.7) 100%)"}}/>
+      </div>
+      {hyroxLogs.length>0&&<>
+        <SL>MY HYROX SESSIONS</SL>
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,overflow:"hidden",marginBottom:20}}>
+          {hyroxLogs.map((l,i)=>(
+            <div key={i}>{i>0&&<Divider/>}
+              <div onClick={()=>setDetailSim(l)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 16px",cursor:"pointer"}}>
+                <div><div style={{fontSize:14,fontWeight:600,color:T.text1}}>{l.name}</div><div style={{fontSize:12,color:T.text2,marginTop:2}}>{l.date} · {l.detail}</div></div>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{fontSize:15,fontWeight:800,color:T.orange,fontVariantNumeric:"tabular-nums",fontFamily:"'Barlow Condensed',sans-serif"}}>{fmt(l.duration)}</div>
+                  <div style={{fontSize:11,color:T.text3}}>›</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </>}
       <SL>COMPETITION DIVISIONS</SL>
       <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
         {Object.entries(HYROX_MODES).map(([name,m])=>(
@@ -1105,22 +1125,6 @@ function HyroxTab({logs,addLog,deleteLog}){
             <Btn onClick={()=>setMode(c.name)} color={T.orange} style={{width:"auto",padding:"8px 18px",fontSize:12}}>Start</Btn>
           </div>
         ))}
-      </>}
-      {hyroxLogs.length>0&&<>
-        <SL>SIMULATION HISTORY</SL>
-        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,overflow:"hidden"}}>
-          {hyroxLogs.map((l,i)=>(
-            <div key={i}>{i>0&&<Divider/>}
-              <div onClick={()=>setDetailSim(l)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 16px",cursor:"pointer"}}>
-                <div><div style={{fontSize:14,fontWeight:600,color:T.text1}}>{l.name}</div><div style={{fontSize:12,color:T.text2,marginTop:2}}>{l.date} · {l.detail}</div></div>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <div style={{fontSize:15,fontWeight:800,color:T.orange,fontVariantNumeric:"tabular-nums",fontFamily:"'Barlow Condensed',sans-serif"}}>{fmt(l.duration)}</div>
-                  <div style={{fontSize:11,color:T.text3}}>›</div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
       </>}
     </div>
   );
@@ -1377,17 +1381,9 @@ function RunningTab({logs,addLog,deleteLog}){
           ))}
         </div>
       </div>
-      <div style={{display:"flex",gap:10,marginBottom:20}}>
-        <Btn onClick={()=>setScreen("gps")} color={T.orange} style={{flex:1}}>GPS Run</Btn>
-        <Btn onClick={()=>setScreen("manual")} color={T.surface} style={{flex:1,border:`1px solid ${T.border}`,color:T.text1}}>Log Manually</Btn>
-      </div>
-      <SL>ZONE GUIDE</SL>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:20}}>
-        {RUN_TYPES.map(r=><div key={r.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 14px"}}><div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}><div style={{width:5,height:5,borderRadius:"50%",background:T.orange,flexShrink:0}}/><div style={{fontSize:12,fontWeight:700,color:T.text1}}>{r.label}</div><span style={{marginLeft:"auto",fontSize:9,fontWeight:700,color:T.orange,background:T.orangeL,padding:"2px 7px",borderRadius:20,letterSpacing:"0.04em"}}>{r.zone}</span></div><div style={{fontSize:11,color:T.text2}}>{r.pace}/km</div><div style={{fontSize:10,color:T.text3,marginTop:2}}>HR {r.hr}</div></div>)}
-      </div>
       {runLogs.length>0&&<>
-        <SL>ALL RUNS</SL>
-        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,overflow:"hidden"}}>
+        <SL>MY RUNS</SL>
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,overflow:"hidden",marginBottom:20}}>
           {runLogs.map((l,i)=>{
             const rt=RUN_TYPES.find(r=>r.label===l.name)||RUN_TYPES[0];
             return(
@@ -1405,6 +1401,14 @@ function RunningTab({logs,addLog,deleteLog}){
           })}
         </div>
       </>}
+      <div style={{display:"flex",gap:10,marginBottom:20}}>
+        <Btn onClick={()=>setScreen("gps")} color={T.orange} style={{flex:1}}>GPS Run</Btn>
+        <Btn onClick={()=>setScreen("manual")} color={T.surface} style={{flex:1,border:`1px solid ${T.border}`,color:T.text1}}>Log Manually</Btn>
+      </div>
+      <SL>ZONE GUIDE</SL>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:20}}>
+        {RUN_TYPES.map(r=><div key={r.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 14px"}}><div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}><div style={{width:5,height:5,borderRadius:"50%",background:T.orange,flexShrink:0}}/><div style={{fontSize:12,fontWeight:700,color:T.text1}}>{r.label}</div><span style={{marginLeft:"auto",fontSize:9,fontWeight:700,color:T.orange,background:T.orangeL,padding:"2px 7px",borderRadius:20,letterSpacing:"0.04em"}}>{r.zone}</span></div><div style={{fontSize:11,color:T.text2}}>{r.pace}/km</div><div style={{fontSize:10,color:T.text3,marginTop:2}}>HR {r.hr}</div></div>)}
+      </div>
     </div>
   );
 }
@@ -1537,6 +1541,25 @@ function TrainingTab({logs,addLog,deleteLog}){
         ))}
       </div>
 
+      {sLogs.length>0&&(
+        <>
+          <SL>MY SESSIONS</SL>
+          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,overflow:"hidden",marginBottom:20}}>
+            {sLogs.slice(0,6).map((l,i)=>(
+              <div key={l._id||i}>{i>0&&<Divider/>}
+                <button onClick={()=>setSelectedSession(l)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 16px",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
+                  <div><div style={{fontSize:14,fontWeight:700,color:T.text1}}>{l.name}</div><div style={{fontSize:11,color:T.text2,marginTop:2}}>{l.date} · {l.detail}</div></div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{fontSize:12,fontWeight:600,color:T.text2,fontFamily:"'Barlow Condensed',sans-serif"}}>{fmt(l.duration||0)}</div>
+                    <span style={{fontSize:14,color:T.text3}}>›</span>
+                  </div>
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
       {/* Category filter chips */}
       <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:4,marginBottom:16}}>
         {cats.map(c=>(
@@ -1580,24 +1603,6 @@ function TrainingTab({logs,addLog,deleteLog}){
         );
       })}
 
-      {sLogs.length>0&&(
-        <>
-          <SL style={{marginTop:8}}>RECENT SESSIONS</SL>
-          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,overflow:"hidden"}}>
-            {sLogs.slice(0,6).map((l,i)=>(
-              <div key={l._id||i}>{i>0&&<Divider/>}
-                <button onClick={()=>setSelectedSession(l)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 16px",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
-                  <div><div style={{fontSize:14,fontWeight:700,color:T.text1}}>{l.name}</div><div style={{fontSize:11,color:T.text2,marginTop:2}}>{l.date} · {l.detail}</div></div>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <div style={{fontSize:12,fontWeight:600,color:T.text2,fontFamily:"'Barlow Condensed',sans-serif"}}>{fmt(l.duration||0)}</div>
-                    <span style={{fontSize:14,color:T.text3}}>›</span>
-                  </div>
-                </button>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
     </div>
   );
 }
@@ -2017,42 +2022,6 @@ function HomeTab({logs,setTab,profile,user,deleteLog}){
         </div>
       </div>
 
-      {/* MY SESSIONS */}
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,marginTop:20}}>
-        <div style={{width:4,height:20,background:T.orange,borderRadius:3,flexShrink:0}}/>
-        <span style={{fontSize:14,fontWeight:800,color:T.text1,letterSpacing:"0.07em",flex:1}}>MY SESSIONS</span>
-        <span style={{fontSize:12,color:T.text2}}>{logs.length} total</span>
-      </div>
-      {logs.length===0?(
-        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:"24px 20px",textAlign:"center",marginBottom:4}}>
-          <div style={{fontSize:14,color:T.text2}}>No sessions logged yet</div>
-          <div style={{fontSize:12,color:T.text3,marginTop:6}}>Start a workout or log a run to see it here</div>
-        </div>
-      ):(
-        <div style={{background:T.card,borderRadius:18,border:`1px solid ${T.border}`,overflow:"hidden",marginBottom:4}}>
-          {logs.slice(0,8).map((l,i)=>(
-            <div key={l._id||i}>{i>0&&<Divider/>}
-              <button onClick={()=>setSelectedSession(l)} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"14px 16px",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
-                <TypeBadge type={l.type}/>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:14,fontWeight:700,color:T.text1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.name}</div>
-                  <div style={{fontSize:11,color:T.text2,marginTop:2}}>{l.date} · {l.detail}</div>
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-                  <div style={{fontSize:13,fontWeight:800,color:T.text2,fontFamily:"'Barlow Condensed',sans-serif"}}>{fmt(l.duration||0)}</div>
-                  <span style={{fontSize:14,color:T.text3}}>›</span>
-                </div>
-              </button>
-            </div>
-          ))}
-          {logs.length>8&&(
-            <div style={{padding:"12px 16px",borderTop:`1px solid ${T.border}`,textAlign:"center"}}>
-              <span style={{fontSize:12,color:T.text2}}>{logs.length-8} more sessions</span>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* THIS WEEK */}
       <SecHead>THIS WEEK</SecHead>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:10}}>
@@ -2124,6 +2093,37 @@ function HomeTab({logs,setTab,profile,user,deleteLog}){
         ))}
       </div>
 
+      {/* MY SESSIONS */}
+      <SecHead>MY SESSIONS</SecHead>
+      {logs.length===0?(
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,padding:"24px 20px",textAlign:"center"}}>
+          <div style={{fontSize:14,color:T.text2}}>No sessions logged yet</div>
+          <div style={{fontSize:12,color:T.text3,marginTop:6}}>Start a workout or log a run to see it here</div>
+        </div>
+      ):(
+        <div style={{background:T.card,borderRadius:18,border:`1px solid ${T.border}`,overflow:"hidden"}}>
+          {logs.slice(0,8).map((l,i)=>(
+            <div key={l._id||i}>{i>0&&<Divider/>}
+              <button onClick={()=>setSelectedSession(l)} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"14px 16px",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
+                <TypeBadge type={l.type}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:14,fontWeight:700,color:T.text1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.name}</div>
+                  <div style={{fontSize:11,color:T.text2,marginTop:2}}>{l.date} · {l.detail}</div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                  <div style={{fontSize:13,fontWeight:800,color:T.text2,fontFamily:"'Barlow Condensed',sans-serif"}}>{fmt(l.duration||0)}</div>
+                  <span style={{fontSize:14,color:T.text3}}>›</span>
+                </div>
+              </button>
+            </div>
+          ))}
+          {logs.length>8&&(
+            <div style={{padding:"12px 16px",borderTop:`1px solid ${T.border}`,textAlign:"center"}}>
+              <span style={{fontSize:12,color:T.text2}}>{logs.length-8} more sessions</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -2323,7 +2323,10 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [devOnboard, setDevOnboard] = useState(false);
-  const [devApp, setDevApp] = useState(new URLSearchParams(window.location.search).has("dev"));
+  const [devApp, setDevApp] = useState(
+    new URLSearchParams(window.location.search).has("dev") ||
+    window.location.hostname === "localhost"
+  );
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
@@ -2340,6 +2343,8 @@ export default function App() {
       .then(({ data }) => { setProfile(data); setProfileLoading(false); });
   }, [session]);
 
+  if (devApp) return <MainApp user={DEV_USER}/>;
+
   if (session === undefined || profileLoading) {
     return (
       <div style={{minHeight:"100vh",background:"#0D0F09",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -2348,8 +2353,6 @@ export default function App() {
       </div>
     );
   }
-
-  if (devApp) return <MainApp user={DEV_USER}/>;
   if (devOnboard) return <Onboarding user={DEV_USER} onComplete={()=>setDevOnboard(false)}/>;
   if (!session) return <Auth onDevMode={()=>setDevOnboard(true)}/>;
   if (!profile?.onboarded) return <Onboarding user={session.user} onComplete={() => setProfile({ onboarded: true })} />;
