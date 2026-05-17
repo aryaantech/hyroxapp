@@ -2255,7 +2255,8 @@ function AccountTab({user,profile,onProfileUpdate}){
 
 // ─── ROOT ────────────────────────────────────────────────────────────────────
 function MainApp({ user }) {
-  const [tab,setTab]=useState("home");
+  const [tab,setTab]=useState(()=>localStorage.getItem("forge_tab")||"home");
+  useEffect(()=>{localStorage.setItem("forge_tab",tab);},[tab]);
   const [logs,setLogs]=useState(()=>{
     try{const s=localStorage.getItem("forge_logs");return s?JSON.parse(s):[];}catch{return[];}
   });
