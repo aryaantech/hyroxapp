@@ -1219,67 +1219,137 @@ function GPSRunTracker({onSave,onClose}){
   const [gpsPoints,setGpsPoints]=useState([]);
   const timerRef=useRef(null);const watchRef=useRef(null);const lastCoord=useRef(null);
   const elapsedRef=useRef(0);const lastKmRef=useRef(0);const gpsReadyRef=useRef(false);
-  // Kalman filter state for lat/lon smoothing
   const kalmanRef=useRef({lat:null,lon:null,pLat:1,pLon:1});
+  // Dead reckoning refs
+  const headingRef=useRef(null);       // bearing degrees from last two GPS points
+  const lastGpsPtRef=useRef(null);     // previous smoothed GPS pt for heading calc
+  const lastGpsTimeRef=useRef(0);      // when we last got a valid GPS fix
+  const drTimerRef=useRef(null);       // dead-reckoning interval
+  const stepRef=useRef({count:0,lastStep:0,lastMag:9.8,lastDrCount:0,running:false,stride:0.00075}); // stride ≈ 0.75m
+  const motionHandlerRef=useRef(null);
 
-  // 1D Kalman filter — reduces GPS jitter while tracking real movement
+  // Geo helper: offset a position by distKm in bearing direction
+  const offsetPos=(lat,lon,distKm,bear)=>{
+    const R=6371,d=distKm/R,b=bear*Math.PI/180;
+    const la1=lat*Math.PI/180,lo1=lon*Math.PI/180;
+    const la2=Math.asin(Math.sin(la1)*Math.cos(d)+Math.cos(la1)*Math.sin(d)*Math.cos(b));
+    const lo2=lo1+Math.atan2(Math.sin(b)*Math.sin(d)*Math.cos(la1),Math.cos(d)-Math.sin(la1)*Math.sin(la2));
+    return{lat:la2*180/Math.PI,lon:lo2*180/Math.PI};
+  };
+  const bearingDeg=(a,b)=>{
+    const dL=(b.lon-a.lon)*Math.PI/180,la1=a.lat*Math.PI/180,la2=b.lat*Math.PI/180;
+    return(Math.atan2(Math.sin(dL)*Math.cos(la2),Math.cos(la1)*Math.sin(la2)-Math.sin(la1)*Math.cos(la2)*Math.cos(dL))*180/Math.PI+360)%360;
+  };
+
+  // Kalman filter for GPS smoothing
   const kalmanUpdate=(raw,accuracy)=>{
     const k=kalmanRef.current;
-    const q=4;                                    // process noise: ~2m/s movement variance
-    const r=Math.max(accuracy*accuracy*0.5,9);   // measurement noise from GPS accuracy (min 3m)
+    const q=4,r=Math.max(accuracy*accuracy*0.5,9);
     if(k.lat===null){k.lat=raw.lat;k.lon=raw.lon;return{lat:raw.lat,lon:raw.lon};}
-    k.pLat+=q; k.pLon+=q;
-    const gLat=k.pLat/(k.pLat+r); const gLon=k.pLon/(k.pLon+r);
-    k.lat+=gLat*(raw.lat-k.lat); k.lon+=gLon*(raw.lon-k.lon);
-    k.pLat*=(1-gLat); k.pLon*=(1-gLon);
+    k.pLat+=q;k.pLon+=q;
+    const gLat=k.pLat/(k.pLat+r),gLon=k.pLon/(k.pLon+r);
+    k.lat+=gLat*(raw.lat-k.lat);k.lon+=gLon*(raw.lon-k.lon);
+    k.pLat*=(1-gLat);k.pLon*=(1-gLon);
     return{lat:k.lat,lon:k.lon};
   };
 
-  useEffect(()=>()=>{clearInterval(timerRef.current);if(navigator.geolocation&&watchRef.current!=null)navigator.geolocation.clearWatch(watchRef.current);},[]);
+  // Shared distance accumulator (GPS and dead-reckoning both use this)
+  const addDistance=(d,dtSec)=>{
+    if(d<=0)return;
+    setDistKm(prev=>{
+      const tot=prev+d;
+      if(dtSec>0)setPaceArr(p=>[...p,d/(dtSec/60)]);
+      const crossedKm=Math.floor(tot);
+      if(crossedKm>lastKmRef.current){for(let k=lastKmRef.current+1;k<=crossedKm;k++)setKmSplits(p=>[...p,{km:k,time:elapsedRef.current}]);lastKmRef.current=crossedKm;}
+      return tot;
+    });
+  };
 
-  const startRun=()=>{
+  useEffect(()=>()=>{
+    clearInterval(timerRef.current);
+    clearInterval(drTimerRef.current);
+    if(navigator.geolocation&&watchRef.current!=null)navigator.geolocation.clearWatch(watchRef.current);
+    if(motionHandlerRef.current)window.removeEventListener("devicemotion",motionHandlerRef.current);
+  },[]);
+
+  const startRun=async()=>{
     if(!navigator.geolocation){setGpsErr("Geolocation is not supported by this browser/device.");return;}
     setPhase("acquiring");setElapsed(0);setDistKm(0);setPaceArr([]);setRunPaused(false);setKmSplits([]);setGpsPoints([]);setGpsErr(null);setGpsReady(false);
     elapsedRef.current=0;lastKmRef.current=0;lastCoord.current=null;gpsReadyRef.current=false;
     kalmanRef.current={lat:null,lon:null,pLat:1,pLon:1};
+    headingRef.current=null;lastGpsPtRef.current=null;lastGpsTimeRef.current=0;
+    stepRef.current={count:0,lastStep:0,lastMag:9.8,lastDrCount:0,running:false,stride:0.00075};
+
+    // Request iOS motion permission (must be in user gesture)
+    if(typeof DeviceMotionEvent?.requestPermission==="function"){
+      try{await DeviceMotionEvent.requestPermission();}catch(e){}
+    }
+
+    // Step detection via accelerometer
+    const motionHandler=(e)=>{
+      if(!stepRef.current.running)return;
+      const acc=e.accelerationIncludingGravity;
+      if(!acc)return;
+      const mag=Math.sqrt((acc.x||0)**2+(acc.y||0)**2+(acc.z||0)**2);
+      const s=stepRef.current;
+      // Rising edge over 11 m/s² = footstrike (works for phone in pocket/hand/armband)
+      if(s.lastMag<11&&mag>=11){
+        const now=Date.now();
+        if(now-s.lastStep>220){s.count++;s.lastStep=now;}  // min 220ms between steps
+      }
+      s.lastMag=mag;
+    };
+    motionHandlerRef.current=motionHandler;
+    window.addEventListener("devicemotion",motionHandler);
+
     watchRef.current=navigator.geolocation.watchPosition(
       pos=>{
         const accuracy=pos.coords.accuracy||999;
-        if(accuracy>50)return; // reject fixes worse than 50m
-
-        // Apply Kalman filter to smooth position
+        if(accuracy>50)return;
         const smoothed=kalmanUpdate({lat:pos.coords.latitude,lon:pos.coords.longitude},accuracy);
         const pt={lat:smoothed.lat,lon:smoothed.lon,t:Date.now()};
+        lastGpsTimeRef.current=pt.t;
 
         if(!gpsReadyRef.current){
-          gpsReadyRef.current=true;setGpsReady(true);setPhase("active");
+          gpsReadyRef.current=true;stepRef.current.running=true;setGpsReady(true);setPhase("active");
           timerRef.current=setInterval(()=>setElapsed(s=>{const n=s+1;elapsedRef.current=n;return n;}),1000);
-          lastCoord.current=pt;
+          // Dead-reckoning timer: fires every 500ms, fills GPS gaps with step data
+          drTimerRef.current=setInterval(()=>{
+            const staleSec=(Date.now()-lastGpsTimeRef.current)/1000;
+            if(staleSec<2.5||!lastCoord.current||headingRef.current===null)return;
+            const s=stepRef.current;
+            const newSteps=s.count-s.lastDrCount;
+            if(newSteps<1)return;
+            s.lastDrCount=s.count;
+            const drDist=newSteps*s.stride; // km
+            const newPos=offsetPos(lastCoord.current.lat,lastCoord.current.lon,drDist,headingRef.current);
+            const drPt={...newPos,t:Date.now()};
+            setGpsPoints(prev=>[...prev,drPt]);
+            addDistance(drDist,0.5);
+            lastCoord.current=drPt;
+          },500);
+          lastCoord.current=pt;lastGpsPtRef.current=pt;
         }
 
-        // Always update map line with smoothed position
+        // Update heading from last two GPS points
+        if(lastGpsPtRef.current){
+          const d=haversineKm(lastGpsPtRef.current,pt);
+          if(d>0.005)headingRef.current=bearingDeg(lastGpsPtRef.current,pt); // only update heading when moved >5m
+        }
+        lastGpsPtRef.current=pt;
+
         setGpsPoints(prev=>[...prev,pt]);
 
         if(lastCoord.current&&pt.t!==lastCoord.current.t){
           const d=haversineKm(lastCoord.current,pt);
           const dtSec=(pt.t-lastCoord.current.t)/1000;
-          const speedKmh=dtSec>0?(d/dtSec)*3600:0;
-
-          // Reject impossible speeds (>30 km/h = unrealistic for running/GPS error)
-          if(speedKmh>30)return;
-
-          if(d>=0.003){ // count if moved at least 3m
-            setDistKm(prev=>{
-              const tot=prev+d;
-              const tMin=dtSec/60;
-              if(tMin>0)setPaceArr(p=>[...p,d/tMin]);
-              const crossedKm=Math.floor(tot);
-              if(crossedKm>lastKmRef.current){for(let k=lastKmRef.current+1;k<=crossedKm;k++)setKmSplits(p=>[...p,{km:k,time:elapsedRef.current}]);lastKmRef.current=crossedKm;}
-              return tot;
-            });
-            lastCoord.current=pt; // only advance anchor when distance is counted
+          if(dtSec>0&&(d/dtSec)*3600>30)return; // >30 km/h = GPS spike
+          if(d>=0.003){
+            addDistance(d,dtSec);
+            lastCoord.current=pt;
+            // Sync step DR counter so we don't double-count
+            stepRef.current.lastDrCount=stepRef.current.count;
           }
-          // If < 3m, keep lastCoord in place so we accumulate until movement is real
         }
       },
       err=>{
@@ -1290,7 +1360,13 @@ function GPSRunTracker({onSave,onClose}){
       {enableHighAccuracy:true,maximumAge:0,timeout:30000}
     );
   };
-  const stopRun=()=>{clearInterval(timerRef.current);if(navigator.geolocation&&watchRef.current!=null)navigator.geolocation.clearWatch(watchRef.current);setPhase("done");};
+  const stopRun=()=>{
+    clearInterval(timerRef.current);clearInterval(drTimerRef.current);
+    if(navigator.geolocation&&watchRef.current!=null)navigator.geolocation.clearWatch(watchRef.current);
+    if(motionHandlerRef.current){window.removeEventListener("devicemotion",motionHandlerRef.current);motionHandlerRef.current=null;}
+    stepRef.current.running=false;
+    setPhase("done");
+  };
   const togglePause=()=>{
     if(!runPaused){
       clearInterval(timerRef.current);
