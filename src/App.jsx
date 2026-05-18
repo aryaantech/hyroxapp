@@ -1208,6 +1208,8 @@ function GPSRunTracker({onSave,onClose}){
   const [runPaused,setRunPaused]=useState(false);
   const [showRunExit,setShowRunExit]=useState(false);
   const [runType,setRunType]=useState("easy");
+  const [targetKm,setTargetKm]=useState(5);
+  const [customTarget,setCustomTarget]=useState("");
   const [elapsed,setElapsed]=useState(0);
   const [distKm,setDistKm]=useState(0);
   const [gpsErr,setGpsErr]=useState(null);
@@ -1295,10 +1297,15 @@ function GPSRunTracker({onSave,onClose}){
       <Btn onClick={()=>onSave({type:"RUN",name:rt.label,zone:rt.zone,duration:elapsed,distKm:parseFloat(distKm.toFixed(2)),pace:paceStr,date:today(),detail:`${distKm.toFixed(2)}km · ${paceStr}/km`,splits:kmSplits})} color={T.orange}>Save Run</Btn>
     </div>
   );
-  if(phase==="active")return(
+  if(phase==="active"){
+    const steps=Math.round(distKm*1350);
+    const remainingKm=Math.max(0,targetKm-distKm);
+    const predictedSecs=avgPace>0?elapsed+(remainingKm/avgPace*60):0;
+    const predStr=avgPace>0&&distKm<targetKm?fmt(Math.round(predictedSecs)):"—";
+    return(
     <div style={{height:"100vh",background:T.bg,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-      {/* Live map — top ~45% */}
-      <div style={{position:"relative",flex:"0 0 45vh",minHeight:0}}>
+      {/* Live map */}
+      <div style={{position:"relative",flex:"0 0 40vh",minHeight:0}}>
         <RunMap points={gpsPoints}/>
         <div style={{position:"absolute",top:16,left:16,zIndex:1000}}>
           <button onClick={()=>setShowRunExit(true)} style={{width:40,height:40,borderRadius:12,border:"none",background:"rgba(13,15,9,0.8)",color:T.text1,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}>←</button>
@@ -1308,60 +1315,99 @@ function GPSRunTracker({onSave,onClose}){
             {runPaused?"⏸ PAUSED":rt.label.toUpperCase()+" · "+rt.zone}
           </div>
         </div>
+        <div style={{position:"absolute",top:16,right:16,zIndex:1000}}>
+          <div style={{background:"rgba(13,15,9,0.8)",borderRadius:20,padding:"6px 12px",fontSize:11,fontWeight:700,color:T.orange,backdropFilter:"blur(8px)",fontFamily:"'Barlow Condensed',sans-serif"}}>
+            {distKm.toFixed(2)}/{targetKm}km
+          </div>
+        </div>
       </div>
-      {/* Stats + controls panel — fixed bottom */}
-      <div style={{flex:1,display:"flex",flexDirection:"column",padding:"14px 16px 90px",gap:10,minHeight:0}}>
-        {/* Primary stats: big numbers */}
+      {/* Stats + controls */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",padding:"12px 14px 90px",gap:8,minHeight:0,overflowY:"auto"}}>
+        {/* Row 1: TIME + DISTANCE — big */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <div style={{background:T.card,borderRadius:16,padding:"14px 12px",textAlign:"center"}}>
+            <div style={{fontSize:36,fontWeight:900,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1,letterSpacing:"-0.01em",fontVariantNumeric:"tabular-nums"}}>{fmt(elapsed)}</div>
+            <div style={{fontSize:10,color:T.text2,marginTop:5,letterSpacing:"0.1em",fontWeight:700}}>TIME</div>
+          </div>
+          <div style={{background:T.card,borderRadius:16,padding:"14px 12px",textAlign:"center"}}>
+            <div style={{fontSize:36,fontWeight:900,color:T.orange,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1,letterSpacing:"-0.01em"}}>{distKm.toFixed(2)}<span style={{fontSize:18,color:T.text2,fontWeight:600}}>km</span></div>
+            <div style={{fontSize:10,color:T.text2,marginTop:5,letterSpacing:"0.1em",fontWeight:700}}>DISTANCE</div>
+          </div>
+        </div>
+        {/* Row 2: AVG PACE + STEPS + PREDICTED */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
           {[
-            {val:fmt(elapsed),label:"TIME",color:T.text1},
-            {val:`${distKm.toFixed(2)}km`,label:"DIST",color:T.orange},
-            {val:paceStr+"/km",label:"PACE",color:T.text1},
+            {val:paceStr+"/km",label:"AVG PACE"},
+            {val:steps>0?steps.toLocaleString():"—",label:"STEPS"},
+            {val:predStr,label:"FINISH EST"},
           ].map((m,i)=>(
-            <div key={i} style={{background:T.card,borderRadius:14,padding:"12px 8px",textAlign:"center"}}>
-              <div style={{fontSize:i===1?28:24,fontWeight:900,color:m.color,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1,letterSpacing:"-0.01em"}}>{m.val}</div>
-              <div style={{fontSize:10,color:T.text2,marginTop:4,letterSpacing:"0.08em",fontWeight:700}}>{m.label}</div>
+            <div key={i} style={{background:T.card,borderRadius:14,padding:"11px 8px",textAlign:"center"}}>
+              <div style={{fontSize:16,fontWeight:800,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1}}>{m.val}</div>
+              <div style={{fontSize:9,color:T.text2,marginTop:4,letterSpacing:"0.07em",fontWeight:700}}>{m.label}</div>
             </div>
           ))}
         </div>
-        {/* km splits */}
+        {/* Lap splits */}
         {kmSplits.length>0&&(
-          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            {kmSplits.map((s,i)=>(
-              <div key={i} style={{background:T.card,border:`1px solid ${T.borderM}`,borderRadius:20,padding:"5px 13px",display:"flex",gap:6,alignItems:"center"}}>
-                <span style={{fontSize:11,color:T.text2,fontWeight:700,fontFamily:"'Barlow Condensed',sans-serif"}}>{s.km}KM</span>
-                <span style={{fontSize:12,fontWeight:800,color:T.orange,fontVariantNumeric:"tabular-nums"}}>{fmt(s.time)}</span>
-              </div>
-            ))}
+          <div>
+            <div style={{fontSize:10,color:T.text2,fontWeight:700,letterSpacing:"0.08em",marginBottom:6}}>LAP SPLITS</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {kmSplits.map((s,i)=>(
+                <div key={i} style={{background:T.card,border:`1px solid ${T.borderM}`,borderRadius:20,padding:"5px 13px",display:"flex",gap:6,alignItems:"center"}}>
+                  <span style={{fontSize:10,color:T.text2,fontWeight:700,fontFamily:"'Barlow Condensed',sans-serif"}}>{s.km}KM</span>
+                  <span style={{fontSize:12,fontWeight:800,color:T.orange,fontVariantNumeric:"tabular-nums"}}>{fmt(s.time)}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
         {gpsErr&&<div style={{fontSize:12,color:"#E05858",background:"rgba(224,88,88,0.1)",padding:"8px 14px",borderRadius:10,border:"1px solid rgba(224,88,88,0.2)"}}>{gpsErr}</div>}
-        {/* Controls — always visible above nav */}
-        <div style={{display:"flex",gap:10,marginTop:"auto",paddingBottom:2}}>
+        {/* Controls */}
+        <div style={{display:"flex",gap:10,marginTop:"auto"}}>
           <button onClick={togglePause} style={{flex:1,padding:"15px 0",background:runPaused?T.orangeL:T.card,border:`1px solid ${runPaused?T.orange:T.borderM}`,borderRadius:50,color:runPaused?T.orange:T.text1,fontSize:15,fontWeight:800,cursor:"pointer",letterSpacing:"0.05em",fontFamily:"'Barlow Condensed',sans-serif"}}>{runPaused?"▶ RESUME":"⏸ PAUSE"}</button>
-          <button onClick={stopRun} style={{flex:1,padding:"15px 0",background:"rgba(224,88,88,0.12)",color:"#E05858",border:"1px solid rgba(224,88,88,0.3)",borderRadius:50,fontSize:15,fontWeight:800,cursor:"pointer",letterSpacing:"0.06em",fontFamily:"'Barlow Condensed',sans-serif"}}>⏹ STOP</button>
+          <button onClick={()=>setShowRunExit(true)} style={{flex:1,padding:"15px 0",background:"rgba(224,88,88,0.12)",color:"#E05858",border:"1px solid rgba(224,88,88,0.3)",borderRadius:50,fontSize:15,fontWeight:800,cursor:"pointer",letterSpacing:"0.06em",fontFamily:"'Barlow Condensed',sans-serif"}}>⏹ STOP</button>
         </div>
       </div>
       {showRunExit&&<ExitConfirmModal
-        onSave={()=>{stopRun();onSave({type:"RUN",name:rt.label,zone:rt.zone,duration:elapsed,distKm:parseFloat(distKm.toFixed(2)),pace:paceStr,date:today(),detail:`${distKm.toFixed(2)}km · ${paceStr}/km`,splits:kmSplits});}}
+        onSave={()=>{stopRun();onSave({type:"RUN",name:rt.label,zone:rt.zone,duration:elapsed,distKm:parseFloat(distKm.toFixed(2)),pace:paceStr,date:today(),detail:`${distKm.toFixed(2)}km · ${paceStr}/km`,splits:kmSplits,target:targetKm});}}
         onDiscard={()=>{clearInterval(timerRef.current);if(navigator.geolocation&&watchRef.current!=null)navigator.geolocation.clearWatch(watchRef.current);onClose();}}
         onCancel={()=>setShowRunExit(false)}
       />}
     </div>
-  );
+  );}
+
+  // ── SETUP SCREEN ─────────────────────────────────────────────────────────────
+  const TARGET_PRESETS=[{label:"3K",val:3},{label:"5K",val:5},{label:"10K",val:10},{label:"Half",val:21.1},{label:"Full",val:42.2}];
   return(
     <div style={{padding:"16px 16px 100px",minHeight:"100vh"}}>
       <button onClick={onClose} style={{...sBtnStyle,marginBottom:16}}>←</button>
-      <div style={{marginBottom:20}}><div style={{fontSize:28,fontWeight:900,color:T.text1,marginBottom:4,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.02em"}}>GPS Run</div><div style={{fontSize:13,color:T.text2}}>Live distance tracking</div></div>
+      <div style={{marginBottom:22}}><div style={{fontSize:28,fontWeight:900,color:T.text1,marginBottom:4,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.02em"}}>GPS Run</div><div style={{fontSize:13,color:T.text2}}>Set your target before you start</div></div>
+
+      <SL>TARGET DISTANCE</SL>
+      <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+        {TARGET_PRESETS.map(p=>(
+          <button key={p.val} onClick={()=>{setTargetKm(p.val);setCustomTarget("");}} style={{padding:"10px 16px",borderRadius:50,border:`1.5px solid ${targetKm===p.val&&!customTarget?T.orange:T.border}`,background:targetKm===p.val&&!customTarget?T.orangeL:T.card,color:targetKm===p.val&&!customTarget?T.orange:T.text1,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.04em"}}>{p.label}</button>
+        ))}
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:22}}>
+        <input
+          type="number" placeholder="Custom km (e.g. 7.5)" value={customTarget}
+          onChange={e=>{setCustomTarget(e.target.value);if(parseFloat(e.target.value)>0)setTargetKm(parseFloat(e.target.value));}}
+          style={{flex:1,background:"rgba(255,255,255,0.06)",border:`1.5px solid ${customTarget?T.orange:T.border}`,borderRadius:14,padding:"13px 16px",color:T.text1,fontSize:15,fontFamily:"'Barlow',sans-serif",outline:"none"}}
+        />
+        <div style={{fontSize:13,color:T.text2,fontWeight:600}}>km</div>
+      </div>
+      <div style={{background:T.card,border:`1px solid ${T.orange}33`,borderRadius:14,padding:"12px 16px",marginBottom:22,display:"flex",alignItems:"center",gap:12}}>
+        <div style={{width:36,height:36,background:T.orangeL,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontSize:18}}>🎯</span></div>
+        <div><div style={{fontSize:13,fontWeight:700,color:T.text1}}>Target: {targetKm}km</div><div style={{fontSize:11,color:T.text2,marginTop:2}}>We'll track your pace and predict your finish time</div></div>
+      </div>
+
       <SL>RUN TYPE</SL>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:22}}>
         {RUN_TYPES.map(r=><button key={r.id} onClick={()=>setRunType(r.id)} style={{padding:"13px 14px",borderRadius:14,border:`1.5px solid ${runType===r.id?T.orange:T.border}`,background:runType===r.id?T.orangeL:T.card,cursor:"pointer",textAlign:"left"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><div style={{fontSize:13,fontWeight:700,color:runType===r.id?T.orange:T.text1}}>{r.label}</div><span style={{fontSize:9,fontWeight:700,color:runType===r.id?T.orange:T.text3,letterSpacing:"0.06em"}}>{r.zone}</span></div><div style={{fontSize:11,color:T.text2}}>{r.pace}/km</div><div style={{fontSize:10,color:T.text3,marginTop:2}}>HR {r.hr}</div></button>)}
       </div>
-      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 16px",marginBottom:22,display:"flex",gap:10,alignItems:"flex-start"}}>
-        <div style={{width:8,height:8,borderRadius:"50%",background:T.orange,marginTop:4,flexShrink:0}}/>
-        <div style={{fontSize:13,color:T.text2,lineHeight:1.5}}>GPS tracking starts automatically. Grant location permission when prompted.</div>
-      </div>
-      <Btn onClick={startRun} color={T.orange} style={{fontSize:15,padding:16}}>START GPS RUN</Btn>
+
+      <Btn onClick={startRun} color={T.orange} style={{fontSize:15,padding:16}}>START GPS RUN →</Btn>
     </div>
   );
 }
