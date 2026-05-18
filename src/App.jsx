@@ -2339,32 +2339,55 @@ const DEV_USER = {id:"dev-preview",email:"dev@forge.local"};
 
 export default function App() {
   const [session, setSession] = useState(undefined); // undefined = loading
-  const [profile, setProfile] = useState(null);
+  const [profile, setProfile] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("forge_profile")); } catch { return null; }
+  });
   const [profileLoading, setProfileLoading] = useState(false);
   const [devOnboard, setDevOnboard] = useState(false);
   const [devApp, setDevApp] = useState(
     new URLSearchParams(window.location.search).has("dev") ||
     window.location.hostname === "localhost"
   );
+  const [cachedUser] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("forge_user_cache")); } catch { return null; }
+  });
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      if (!session) {
+        localStorage.removeItem("forge_user_cache");
+        localStorage.removeItem("forge_profile");
+      } else if (session?.user) {
+        localStorage.setItem("forge_user_cache", JSON.stringify({ id: session.user.id, email: session.user.email }));
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
 
+  // Persist profile so returning users skip the spinner
   useEffect(() => {
+    try { if (profile) localStorage.setItem("forge_profile", JSON.stringify(profile)); } catch {}
+  }, [profile]);
+
+  // Only refetch when user actually changes — NOT on every token refresh
+  useEffect(() => {
+    if (session === undefined) return;
     if (!session) { setProfile(null); return; }
     setProfileLoading(true);
     supabase.from("profiles").select("onboarded").eq("id", session.user.id).single()
-      .then(({ data }) => { setProfile(data); setProfileLoading(false); });
-  }, [session]);
+      .then(({ data }) => { if (data) setProfile(data); setProfileLoading(false); });
+  }, [session?.user?.id]);
 
   if (devApp) return <MainApp user={DEV_USER}/>;
 
-  if (session === undefined || profileLoading) {
+  // Returning authenticated user: render immediately from cache, no spinner
+  if (session === undefined && cachedUser && profile?.onboarded) {
+    return <MainApp user={cachedUser}/>;
+  }
+
+  if (session === undefined || (profileLoading && !profile)) {
     return (
       <div style={{minHeight:"100vh",background:"#0D0F09",display:"flex",alignItems:"center",justifyContent:"center"}}>
         <div style={{width:40,height:40,border:"3px solid rgba(212,224,32,0.2)",borderTopColor:"#D4E020",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
