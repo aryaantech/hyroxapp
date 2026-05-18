@@ -1219,31 +1219,68 @@ function GPSRunTracker({onSave,onClose}){
   const [gpsPoints,setGpsPoints]=useState([]);
   const timerRef=useRef(null);const watchRef=useRef(null);const lastCoord=useRef(null);
   const elapsedRef=useRef(0);const lastKmRef=useRef(0);const gpsReadyRef=useRef(false);
+  // Kalman filter state for lat/lon smoothing
+  const kalmanRef=useRef({lat:null,lon:null,pLat:1,pLon:1});
+
+  // 1D Kalman filter — reduces GPS jitter while tracking real movement
+  const kalmanUpdate=(raw,accuracy)=>{
+    const k=kalmanRef.current;
+    const q=4;                                    // process noise: ~2m/s movement variance
+    const r=Math.max(accuracy*accuracy*0.5,9);   // measurement noise from GPS accuracy (min 3m)
+    if(k.lat===null){k.lat=raw.lat;k.lon=raw.lon;return{lat:raw.lat,lon:raw.lon};}
+    k.pLat+=q; k.pLon+=q;
+    const gLat=k.pLat/(k.pLat+r); const gLon=k.pLon/(k.pLon+r);
+    k.lat+=gLat*(raw.lat-k.lat); k.lon+=gLon*(raw.lon-k.lon);
+    k.pLat*=(1-gLat); k.pLon*=(1-gLon);
+    return{lat:k.lat,lon:k.lon};
+  };
 
   useEffect(()=>()=>{clearInterval(timerRef.current);if(navigator.geolocation&&watchRef.current!=null)navigator.geolocation.clearWatch(watchRef.current);},[]);
 
   const startRun=()=>{
     if(!navigator.geolocation){setGpsErr("Geolocation is not supported by this browser/device.");return;}
-    setPhase("acquiring");setElapsed(0);setDistKm(0);setPaceArr([]);setRunPaused(false);setKmSplits([]);setGpsPoints([]);setGpsErr(null);setGpsReady(false);elapsedRef.current=0;lastKmRef.current=0;lastCoord.current=null;gpsReadyRef.current=false;
+    setPhase("acquiring");setElapsed(0);setDistKm(0);setPaceArr([]);setRunPaused(false);setKmSplits([]);setGpsPoints([]);setGpsErr(null);setGpsReady(false);
+    elapsedRef.current=0;lastKmRef.current=0;lastCoord.current=null;gpsReadyRef.current=false;
+    kalmanRef.current={lat:null,lon:null,pLat:1,pLon:1};
     watchRef.current=navigator.geolocation.watchPosition(
       pos=>{
-        if(!gpsReadyRef.current){gpsReadyRef.current=true;setGpsReady(true);setPhase("active");timerRef.current=setInterval(()=>setElapsed(s=>{const n=s+1;elapsedRef.current=n;return n;}),1000);}
-        const pt={lat:pos.coords.latitude,lon:pos.coords.longitude,t:Date.now()};
+        const accuracy=pos.coords.accuracy||999;
+        if(accuracy>50)return; // reject fixes worse than 50m
+
+        // Apply Kalman filter to smooth position
+        const smoothed=kalmanUpdate({lat:pos.coords.latitude,lon:pos.coords.longitude},accuracy);
+        const pt={lat:smoothed.lat,lon:smoothed.lon,t:Date.now()};
+
+        if(!gpsReadyRef.current){
+          gpsReadyRef.current=true;setGpsReady(true);setPhase("active");
+          timerRef.current=setInterval(()=>setElapsed(s=>{const n=s+1;elapsedRef.current=n;return n;}),1000);
+          lastCoord.current=pt;
+        }
+
+        // Always update map line with smoothed position
         setGpsPoints(prev=>[...prev,pt]);
-        if(lastCoord.current){
+
+        if(lastCoord.current&&pt.t!==lastCoord.current.t){
           const d=haversineKm(lastCoord.current,pt);
-          if(d>0.005&&d<0.3){
+          const dtSec=(pt.t-lastCoord.current.t)/1000;
+          const speedKmh=dtSec>0?(d/dtSec)*3600:0;
+
+          // Reject impossible speeds (>30 km/h = unrealistic for running/GPS error)
+          if(speedKmh>30)return;
+
+          if(d>=0.003){ // count if moved at least 3m
             setDistKm(prev=>{
               const tot=prev+d;
-              const tMin=(pt.t-lastCoord.current.t)/60000;
+              const tMin=dtSec/60;
               if(tMin>0)setPaceArr(p=>[...p,d/tMin]);
               const crossedKm=Math.floor(tot);
               if(crossedKm>lastKmRef.current){for(let k=lastKmRef.current+1;k<=crossedKm;k++)setKmSplits(p=>[...p,{km:k,time:elapsedRef.current}]);lastKmRef.current=crossedKm;}
               return tot;
             });
+            lastCoord.current=pt; // only advance anchor when distance is counted
           }
+          // If < 3m, keep lastCoord in place so we accumulate until movement is real
         }
-        lastCoord.current=pt;
       },
       err=>{
         const msg=err.code===1?"Location permission denied — tap your browser's address bar to allow location access":err.code===2?"GPS signal unavailable — try moving outdoors":"GPS timed out — weak signal, try moving to open sky";
