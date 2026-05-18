@@ -1297,31 +1297,30 @@ function GPSRunTracker({onSave,onClose}){
   );
   if(phase==="active")return(
     <div style={{height:"100vh",background:T.bg,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-      {/* Live map — top half */}
-      <div style={{position:"relative",flex:"0 0 52vh",minHeight:0}}>
+      {/* Live map — top ~45% */}
+      <div style={{position:"relative",flex:"0 0 45vh",minHeight:0}}>
         <RunMap points={gpsPoints}/>
-        {/* Overlay: back + status pill */}
         <div style={{position:"absolute",top:16,left:16,zIndex:1000}}>
-          <button onClick={()=>setShowRunExit(true)} style={{width:38,height:38,borderRadius:12,border:"none",background:"rgba(13,15,9,0.75)",color:T.text1,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}>←</button>
+          <button onClick={()=>setShowRunExit(true)} style={{width:40,height:40,borderRadius:12,border:"none",background:"rgba(13,15,9,0.8)",color:T.text1,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}>←</button>
         </div>
         <div style={{position:"absolute",top:16,left:"50%",transform:"translateX(-50%)",zIndex:1000}}>
-          <div style={{background:runPaused?"rgba(13,15,9,0.85)":"rgba(212,224,32,0.9)",borderRadius:20,padding:"6px 16px",fontSize:11,fontWeight:800,color:runPaused?"#D4E020":"#0D0F09",letterSpacing:"0.1em",backdropFilter:"blur(8px)",fontFamily:"'Barlow Condensed',sans-serif"}}>
+          <div style={{background:runPaused?"rgba(13,15,9,0.9)":"rgba(212,224,32,0.92)",borderRadius:20,padding:"7px 18px",fontSize:12,fontWeight:800,color:runPaused?"#D4E020":"#0D0F09",letterSpacing:"0.1em",backdropFilter:"blur(8px)",fontFamily:"'Barlow Condensed',sans-serif",whiteSpace:"nowrap"}}>
             {runPaused?"⏸ PAUSED":rt.label.toUpperCase()+" · "+rt.zone}
           </div>
         </div>
       </div>
-      {/* Stats panel — bottom half */}
-      <div style={{flex:1,display:"flex",flexDirection:"column",padding:"16px 20px 20px",gap:12,minHeight:0,overflowY:"auto"}}>
-        {/* Primary stats row */}
+      {/* Stats + controls panel — fixed bottom */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",padding:"14px 16px 90px",gap:10,minHeight:0}}>
+        {/* Primary stats: big numbers */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
           {[
-            {val:fmt(elapsed),label:"TIME",big:true},
-            {val:`${distKm.toFixed(2)}km`,label:"DIST",big:true},
-            {val:`${paceStr}/km`,label:"PACE",big:false},
+            {val:fmt(elapsed),label:"TIME",color:T.text1},
+            {val:`${distKm.toFixed(2)}km`,label:"DIST",color:T.orange},
+            {val:paceStr+"/km",label:"PACE",color:T.text1},
           ].map((m,i)=>(
-            <div key={i} style={{background:T.card,borderRadius:12,padding:"10px 12px",textAlign:"center"}}>
-              <div style={{fontSize:i<2?22:16,fontWeight:900,color:i===1?T.orange:T.text1,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1,letterSpacing:"-0.01em"}}>{m.val}</div>
-              <div style={{fontSize:9,color:T.text2,marginTop:3,letterSpacing:"0.08em",fontWeight:700}}>{m.label}</div>
+            <div key={i} style={{background:T.card,borderRadius:14,padding:"12px 8px",textAlign:"center"}}>
+              <div style={{fontSize:i===1?28:24,fontWeight:900,color:m.color,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1,letterSpacing:"-0.01em"}}>{m.val}</div>
+              <div style={{fontSize:10,color:T.text2,marginTop:4,letterSpacing:"0.08em",fontWeight:700}}>{m.label}</div>
             </div>
           ))}
         </div>
@@ -1329,18 +1328,18 @@ function GPSRunTracker({onSave,onClose}){
         {kmSplits.length>0&&(
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
             {kmSplits.map((s,i)=>(
-              <div key={i} style={{background:T.card,border:`1px solid ${T.borderM}`,borderRadius:20,padding:"4px 11px",display:"flex",gap:5,alignItems:"center"}}>
-                <span style={{fontSize:9,color:T.text2,fontWeight:700,fontFamily:"'Barlow Condensed',sans-serif"}}>{s.km}KM</span>
-                <span style={{fontSize:10,fontWeight:800,color:T.orange,fontVariantNumeric:"tabular-nums"}}>{fmt(s.time)}</span>
+              <div key={i} style={{background:T.card,border:`1px solid ${T.borderM}`,borderRadius:20,padding:"5px 13px",display:"flex",gap:6,alignItems:"center"}}>
+                <span style={{fontSize:11,color:T.text2,fontWeight:700,fontFamily:"'Barlow Condensed',sans-serif"}}>{s.km}KM</span>
+                <span style={{fontSize:12,fontWeight:800,color:T.orange,fontVariantNumeric:"tabular-nums"}}>{fmt(s.time)}</span>
               </div>
             ))}
           </div>
         )}
         {gpsErr&&<div style={{fontSize:12,color:"#E05858",background:"rgba(224,88,88,0.1)",padding:"8px 14px",borderRadius:10,border:"1px solid rgba(224,88,88,0.2)"}}>{gpsErr}</div>}
-        {/* Controls */}
-        <div style={{display:"flex",gap:10,marginTop:"auto"}}>
-          <button onClick={togglePause} style={{flex:1,padding:14,background:runPaused?T.orangeL:T.card,border:`1px solid ${runPaused?T.orange:T.borderM}`,borderRadius:50,color:runPaused?T.orange:T.text1,fontSize:13,fontWeight:800,cursor:"pointer",letterSpacing:"0.05em",fontFamily:"'Barlow Condensed',sans-serif"}}>{runPaused?"▶ RESUME":"⏸ PAUSE"}</button>
-          <button onClick={stopRun} style={{flex:1,padding:14,background:T.card,color:T.text2,border:`1px solid ${T.borderM}`,borderRadius:50,fontSize:13,fontWeight:800,cursor:"pointer",letterSpacing:"0.06em",fontFamily:"'Barlow Condensed',sans-serif"}}>⏹ STOP</button>
+        {/* Controls — always visible above nav */}
+        <div style={{display:"flex",gap:10,marginTop:"auto",paddingBottom:2}}>
+          <button onClick={togglePause} style={{flex:1,padding:"15px 0",background:runPaused?T.orangeL:T.card,border:`1px solid ${runPaused?T.orange:T.borderM}`,borderRadius:50,color:runPaused?T.orange:T.text1,fontSize:15,fontWeight:800,cursor:"pointer",letterSpacing:"0.05em",fontFamily:"'Barlow Condensed',sans-serif"}}>{runPaused?"▶ RESUME":"⏸ PAUSE"}</button>
+          <button onClick={stopRun} style={{flex:1,padding:"15px 0",background:"rgba(224,88,88,0.12)",color:"#E05858",border:"1px solid rgba(224,88,88,0.3)",borderRadius:50,fontSize:15,fontWeight:800,cursor:"pointer",letterSpacing:"0.06em",fontFamily:"'Barlow Condensed',sans-serif"}}>⏹ STOP</button>
         </div>
       </div>
       {showRunExit&&<ExitConfirmModal
