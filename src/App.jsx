@@ -1173,34 +1173,70 @@ function GPSRunTracker({onSave,onClose}){
   const [elapsed,setElapsed]=useState(0);
   const [distKm,setDistKm]=useState(0);
   const [gpsErr,setGpsErr]=useState(null);
+  const [gpsReady,setGpsReady]=useState(false);
   const [paceArr,setPaceArr]=useState([]);
   const [kmSplits,setKmSplits]=useState([]);
   const timerRef=useRef(null);const watchRef=useRef(null);const lastCoord=useRef(null);
   const elapsedRef=useRef(0);const lastKmRef=useRef(0);
 
-  useEffect(()=>()=>{clearInterval(timerRef.current);if(navigator.geolocation&&watchRef.current)navigator.geolocation.clearWatch(watchRef.current);},[]);
+  useEffect(()=>()=>{clearInterval(timerRef.current);if(navigator.geolocation&&watchRef.current!=null)navigator.geolocation.clearWatch(watchRef.current);},[]);
 
   const startRun=()=>{
-    setPhase("active");setElapsed(0);setDistKm(0);setPaceArr([]);setRunPaused(false);setKmSplits([]);elapsedRef.current=0;lastKmRef.current=0;
-    timerRef.current=setInterval(()=>setElapsed(s=>{const n=s+1;elapsedRef.current=n;return n;}),1000);
-    if(navigator.geolocation){
-      watchRef.current=navigator.geolocation.watchPosition(
-        pos=>{const pt={lat:pos.coords.latitude,lon:pos.coords.longitude,t:Date.now()};if(lastCoord.current){const d=haversineKm(lastCoord.current,pt);if(d>0.005){setDistKm(prev=>{const tot=prev+d;const tMin=(pt.t-lastCoord.current.t)/60000;if(tMin>0)setPaceArr(p=>[...p,d/tMin]);const crossedKm=Math.floor(tot);if(crossedKm>lastKmRef.current){for(let k=lastKmRef.current+1;k<=crossedKm;k++)setKmSplits(p=>[...p,{km:k,time:elapsedRef.current}]);lastKmRef.current=crossedKm;}return tot;});}}lastCoord.current=pt;},
-        ()=>setGpsErr("GPS unavailable — distance not tracked"),
-        {enableHighAccuracy:true,maximumAge:2000,timeout:10000}
-      );
-    }else setGpsErr("GPS not supported");
+    if(!navigator.geolocation){setGpsErr("Geolocation is not supported by this browser/device.");return;}
+    setPhase("acquiring");setElapsed(0);setDistKm(0);setPaceArr([]);setRunPaused(false);setKmSplits([]);setGpsErr(null);setGpsReady(false);elapsedRef.current=0;lastKmRef.current=0;lastCoord.current=null;
+    watchRef.current=navigator.geolocation.watchPosition(
+      pos=>{
+        if(!gpsReady){setGpsReady(true);setPhase("active");timerRef.current=setInterval(()=>setElapsed(s=>{const n=s+1;elapsedRef.current=n;return n;}),1000);}
+        const pt={lat:pos.coords.latitude,lon:pos.coords.longitude,t:Date.now()};
+        if(lastCoord.current){
+          const d=haversineKm(lastCoord.current,pt);
+          // filter noise (<5m) and GPS jumps (>300m per update = error)
+          if(d>0.005&&d<0.3){
+            setDistKm(prev=>{
+              const tot=prev+d;
+              const tMin=(pt.t-lastCoord.current.t)/60000;
+              if(tMin>0)setPaceArr(p=>[...p,d/tMin]);
+              const crossedKm=Math.floor(tot);
+              if(crossedKm>lastKmRef.current){for(let k=lastKmRef.current+1;k<=crossedKm;k++)setKmSplits(p=>[...p,{km:k,time:elapsedRef.current}]);lastKmRef.current=crossedKm;}
+              return tot;
+            });
+          }
+        }
+        lastCoord.current=pt;
+      },
+      err=>{
+        const msg=err.code===1?"Location permission denied — tap your browser's address bar to allow location access":err.code===2?"GPS signal unavailable — try moving outdoors":"GPS timed out — weak signal, try moving to open sky";
+        setGpsErr(msg);
+        if(phase==="acquiring")setPhase("setup");
+      },
+      {enableHighAccuracy:true,maximumAge:0,timeout:30000}
+    );
   };
-  const stopRun=()=>{clearInterval(timerRef.current);if(navigator.geolocation)navigator.geolocation.clearWatch(watchRef.current);setPhase("done");};
+  const stopRun=()=>{clearInterval(timerRef.current);if(navigator.geolocation&&watchRef.current!=null)navigator.geolocation.clearWatch(watchRef.current);setPhase("done");};
   const togglePause=()=>{
-    if(!runPaused){clearInterval(timerRef.current);}
-    else{timerRef.current=setInterval(()=>setElapsed(s=>s+1),1000);}
+    if(!runPaused){
+      clearInterval(timerRef.current);
+    }else{
+      timerRef.current=setInterval(()=>setElapsed(s=>{const n=s+1;elapsedRef.current=n;return n;}),1000);
+    }
     setRunPaused(p=>!p);
   };
   const avgPace=paceArr.length?paceArr.reduce((a,b)=>a+b,0)/paceArr.length:0;
   const paceStr=avgPace>0?`${Math.floor(1/avgPace)}:${String(Math.round((1/avgPace%1)*60)).padStart(2,"0")}`:"—";
   const rt=RUN_TYPES.find(r=>r.id===runType)||RUN_TYPES[0];
 
+  if(phase==="acquiring")return(
+    <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"24px",gap:20}}>
+      <div style={{width:64,height:64,border:`3px solid ${T.orangeL}`,borderTopColor:T.orange,borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:18,fontWeight:800,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.05em",marginBottom:6}}>ACQUIRING GPS SIGNAL</div>
+        <div style={{fontSize:13,color:T.text2,lineHeight:1.5}}>Move to an open area for faster signal.<br/>This can take up to 30 seconds.</div>
+      </div>
+      {gpsErr&&<div style={{background:"rgba(224,88,88,0.1)",border:"1px solid rgba(224,88,88,0.3)",borderRadius:14,padding:"14px 18px",fontSize:13,color:"#E05858",textAlign:"center",maxWidth:300,lineHeight:1.5}}>{gpsErr}</div>}
+      <button onClick={()=>{if(navigator.geolocation&&watchRef.current!=null)navigator.geolocation.clearWatch(watchRef.current);setPhase("setup");}} style={{marginTop:8,padding:"12px 28px",borderRadius:50,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:T.text2,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Barlow',sans-serif"}}>Cancel</button>
+    </div>
+  );
   if(phase==="done")return(
     <div style={{padding:"16px 16px 100px",minHeight:"100vh"}}>
       <button onClick={onClose} style={{...sBtnStyle,marginBottom:20}}>←</button>
