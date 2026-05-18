@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "./supabase";
 import Auth from "./Auth";
 import Onboarding from "./Onboarding";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
 const T = {
   bg:"#0D0F09", surface:"#161810", card:"#1E2118",
@@ -1165,6 +1167,42 @@ function HyroxTab({logs,addLog,deleteLog}){
 }
 
 // ─── GPS RUN TRACKER ─────────────────────────────────────────────────────────
+function RunMap({ points }) {
+  const containerRef = useRef(null);
+  const mapRef = useRef(null);
+  const polylineRef = useRef(null);
+  const dotRef = useRef(null);
+
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+    const map = L.map(containerRef.current, { zoomControl: false, attributionControl: false });
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 19 }).addTo(map);
+    mapRef.current = map;
+    return () => { map.remove(); mapRef.current = null; polylineRef.current = null; dotRef.current = null; };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || points.length === 0) return;
+    const latLngs = points.map(p => [p.lat, p.lon]);
+    if (polylineRef.current) {
+      polylineRef.current.setLatLngs(latLngs);
+    } else {
+      polylineRef.current = L.polyline(latLngs, { color: "#D4E020", weight: 5, opacity: 0.9 }).addTo(map);
+    }
+    const last = latLngs[latLngs.length - 1];
+    if (dotRef.current) {
+      dotRef.current.setLatLng(last);
+    } else {
+      dotRef.current = L.circleMarker(last, { radius: 9, fillColor: "#D4E020", color: "#fff", weight: 2.5, fillOpacity: 1 }).addTo(map);
+    }
+    if (points.length === 1) map.setView(last, 17);
+    else map.panTo(last);
+  }, [points]);
+
+  return <div ref={containerRef} style={{ width: "100%", height: "100%" }} />;
+}
+
 function GPSRunTracker({onSave,onClose}){
   const [phase,setPhase]=useState("setup");
   const [runPaused,setRunPaused]=useState(false);
@@ -1176,21 +1214,22 @@ function GPSRunTracker({onSave,onClose}){
   const [gpsReady,setGpsReady]=useState(false);
   const [paceArr,setPaceArr]=useState([]);
   const [kmSplits,setKmSplits]=useState([]);
+  const [gpsPoints,setGpsPoints]=useState([]);
   const timerRef=useRef(null);const watchRef=useRef(null);const lastCoord=useRef(null);
-  const elapsedRef=useRef(0);const lastKmRef=useRef(0);
+  const elapsedRef=useRef(0);const lastKmRef=useRef(0);const gpsReadyRef=useRef(false);
 
   useEffect(()=>()=>{clearInterval(timerRef.current);if(navigator.geolocation&&watchRef.current!=null)navigator.geolocation.clearWatch(watchRef.current);},[]);
 
   const startRun=()=>{
     if(!navigator.geolocation){setGpsErr("Geolocation is not supported by this browser/device.");return;}
-    setPhase("acquiring");setElapsed(0);setDistKm(0);setPaceArr([]);setRunPaused(false);setKmSplits([]);setGpsErr(null);setGpsReady(false);elapsedRef.current=0;lastKmRef.current=0;lastCoord.current=null;
+    setPhase("acquiring");setElapsed(0);setDistKm(0);setPaceArr([]);setRunPaused(false);setKmSplits([]);setGpsPoints([]);setGpsErr(null);setGpsReady(false);elapsedRef.current=0;lastKmRef.current=0;lastCoord.current=null;gpsReadyRef.current=false;
     watchRef.current=navigator.geolocation.watchPosition(
       pos=>{
-        if(!gpsReady){setGpsReady(true);setPhase("active");timerRef.current=setInterval(()=>setElapsed(s=>{const n=s+1;elapsedRef.current=n;return n;}),1000);}
+        if(!gpsReadyRef.current){gpsReadyRef.current=true;setGpsReady(true);setPhase("active");timerRef.current=setInterval(()=>setElapsed(s=>{const n=s+1;elapsedRef.current=n;return n;}),1000);}
         const pt={lat:pos.coords.latitude,lon:pos.coords.longitude,t:Date.now()};
+        setGpsPoints(prev=>[...prev,pt]);
         if(lastCoord.current){
           const d=haversineKm(lastCoord.current,pt);
-          // filter noise (<5m) and GPS jumps (>300m per update = error)
           if(d>0.005&&d<0.3){
             setDistKm(prev=>{
               const tot=prev+d;
@@ -1207,7 +1246,7 @@ function GPSRunTracker({onSave,onClose}){
       err=>{
         const msg=err.code===1?"Location permission denied — tap your browser's address bar to allow location access":err.code===2?"GPS signal unavailable — try moving outdoors":"GPS timed out — weak signal, try moving to open sky";
         setGpsErr(msg);
-        if(phase==="acquiring")setPhase("setup");
+        if(!gpsReadyRef.current)setPhase("setup");
       },
       {enableHighAccuracy:true,maximumAge:0,timeout:30000}
     );
@@ -1257,42 +1296,56 @@ function GPSRunTracker({onSave,onClose}){
     </div>
   );
   if(phase==="active")return(
-    <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",padding:"16px 20px 0"}}>
-      <button onClick={()=>setShowRunExit(true)} style={{...sBtnStyle,alignSelf:"flex-start",marginBottom:20}}>←</button>
-      <div style={{textAlign:"center",marginBottom:6}}>
-        <span style={{fontSize:11,fontWeight:700,color:runPaused?T.text3:T.orange,letterSpacing:"0.12em"}}>{runPaused?"PAUSED":rt.label.toUpperCase()+" · "+rt.zone}</span>
+    <div style={{height:"100vh",background:T.bg,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      {/* Live map — top half */}
+      <div style={{position:"relative",flex:"0 0 52vh",minHeight:0}}>
+        <RunMap points={gpsPoints}/>
+        {/* Overlay: back + status pill */}
+        <div style={{position:"absolute",top:16,left:16,zIndex:1000}}>
+          <button onClick={()=>setShowRunExit(true)} style={{width:38,height:38,borderRadius:12,border:"none",background:"rgba(13,15,9,0.75)",color:T.text1,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}>←</button>
+        </div>
+        <div style={{position:"absolute",top:16,left:"50%",transform:"translateX(-50%)",zIndex:1000}}>
+          <div style={{background:runPaused?"rgba(13,15,9,0.85)":"rgba(212,224,32,0.9)",borderRadius:20,padding:"6px 16px",fontSize:11,fontWeight:800,color:runPaused?"#D4E020":"#0D0F09",letterSpacing:"0.1em",backdropFilter:"blur(8px)",fontFamily:"'Barlow Condensed',sans-serif"}}>
+            {runPaused?"⏸ PAUSED":rt.label.toUpperCase()+" · "+rt.zone}
+          </div>
+        </div>
       </div>
-      <div style={{flex:1,display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",gap:4}}>
-        <div className={runPaused?"":"timer-glow"} style={{fontSize:88,fontWeight:900,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",fontVariantNumeric:"tabular-nums",lineHeight:1,letterSpacing:"-0.02em"}}>{fmt(elapsed)}</div>
-        <div style={{fontSize:52,fontWeight:900,color:T.orange,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1,marginTop:8}}>{distKm.toFixed(2)}<span style={{fontSize:22,color:T.text2,fontWeight:600}}> km</span></div>
-        <div style={{fontSize:20,color:T.text2,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,marginTop:2}}>{paceStr}<span style={{fontSize:14,fontWeight:500}}>/km avg</span></div>
-        {gpsErr&&<div style={{fontSize:12,color:T.text2,marginTop:10,background:T.card,padding:"8px 14px",borderRadius:8,border:`1px solid ${T.border}`}}>{gpsErr}</div>}
+      {/* Stats panel — bottom half */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",padding:"16px 20px 20px",gap:12,minHeight:0,overflowY:"auto"}}>
+        {/* Primary stats row */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+          {[
+            {val:fmt(elapsed),label:"TIME",big:true},
+            {val:`${distKm.toFixed(2)}km`,label:"DIST",big:true},
+            {val:`${paceStr}/km`,label:"PACE",big:false},
+          ].map((m,i)=>(
+            <div key={i} style={{background:T.card,borderRadius:12,padding:"10px 12px",textAlign:"center"}}>
+              <div style={{fontSize:i<2?22:16,fontWeight:900,color:i===1?T.orange:T.text1,fontFamily:"'Barlow Condensed',sans-serif",lineHeight:1,letterSpacing:"-0.01em"}}>{m.val}</div>
+              <div style={{fontSize:9,color:T.text2,marginTop:3,letterSpacing:"0.08em",fontWeight:700}}>{m.label}</div>
+            </div>
+          ))}
+        </div>
+        {/* km splits */}
         {kmSplits.length>0&&(
-          <div style={{display:"flex",gap:6,justifyContent:"center",flexWrap:"wrap",marginTop:16,maxWidth:300}}>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
             {kmSplits.map((s,i)=>(
-              <div key={i} style={{background:T.card,border:`1px solid ${T.borderM}`,borderRadius:20,padding:"5px 12px",display:"flex",gap:6,alignItems:"center"}}>
-                <span style={{fontSize:10,color:T.text2,fontWeight:700,fontFamily:"'Barlow Condensed',sans-serif"}}>{s.km}KM</span>
-                <span style={{fontSize:11,fontWeight:800,color:T.orange,fontVariantNumeric:"tabular-nums"}}>{fmt(s.time)}</span>
+              <div key={i} style={{background:T.card,border:`1px solid ${T.borderM}`,borderRadius:20,padding:"4px 11px",display:"flex",gap:5,alignItems:"center"}}>
+                <span style={{fontSize:9,color:T.text2,fontWeight:700,fontFamily:"'Barlow Condensed',sans-serif"}}>{s.km}KM</span>
+                <span style={{fontSize:10,fontWeight:800,color:T.orange,fontVariantNumeric:"tabular-nums"}}>{fmt(s.time)}</span>
               </div>
             ))}
           </div>
         )}
-        <div style={{display:"flex",gap:10,marginTop:20}}>
-          {[{label:"Target",val:rt.pace+"/km"},{label:"HR Zone",val:rt.hr+" bpm"}].map((m,i)=>(
-            <div key={i} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"10px 18px",textAlign:"center"}}>
-              <div style={{fontSize:15,fontWeight:800,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif"}}>{m.val}</div>
-              <div style={{fontSize:10,color:T.text2,marginTop:2,letterSpacing:"0.05em"}}>{m.label.toUpperCase()}</div>
-            </div>
-          ))}
+        {gpsErr&&<div style={{fontSize:12,color:"#E05858",background:"rgba(224,88,88,0.1)",padding:"8px 14px",borderRadius:10,border:"1px solid rgba(224,88,88,0.2)"}}>{gpsErr}</div>}
+        {/* Controls */}
+        <div style={{display:"flex",gap:10,marginTop:"auto"}}>
+          <button onClick={togglePause} style={{flex:1,padding:14,background:runPaused?T.orangeL:T.card,border:`1px solid ${runPaused?T.orange:T.borderM}`,borderRadius:50,color:runPaused?T.orange:T.text1,fontSize:13,fontWeight:800,cursor:"pointer",letterSpacing:"0.05em",fontFamily:"'Barlow Condensed',sans-serif"}}>{runPaused?"▶ RESUME":"⏸ PAUSE"}</button>
+          <button onClick={stopRun} style={{flex:1,padding:14,background:T.card,color:T.text2,border:`1px solid ${T.borderM}`,borderRadius:50,fontSize:13,fontWeight:800,cursor:"pointer",letterSpacing:"0.06em",fontFamily:"'Barlow Condensed',sans-serif"}}>⏹ STOP</button>
         </div>
-      </div>
-      <div style={{display:"flex",gap:10,paddingBottom:90,paddingTop:20}}>
-        <button onClick={togglePause} style={{flex:1,padding:16,background:runPaused?T.orangeL:T.card,border:`1px solid ${runPaused?T.orange:T.borderM}`,borderRadius:50,color:runPaused?T.orange:T.text1,fontSize:14,fontWeight:800,cursor:"pointer",letterSpacing:"0.05em",fontFamily:"'Barlow Condensed',sans-serif"}}>{runPaused?"▶ RESUME":"⏸ PAUSE"}</button>
-        <button onClick={stopRun} style={{flex:1,padding:16,background:T.card,color:T.text2,border:`1px solid ${T.borderM}`,borderRadius:50,fontSize:14,fontWeight:800,cursor:"pointer",letterSpacing:"0.06em",fontFamily:"'Barlow Condensed',sans-serif"}}>⏹ STOP</button>
       </div>
       {showRunExit&&<ExitConfirmModal
         onSave={()=>{stopRun();onSave({type:"RUN",name:rt.label,zone:rt.zone,duration:elapsed,distKm:parseFloat(distKm.toFixed(2)),pace:paceStr,date:today(),detail:`${distKm.toFixed(2)}km · ${paceStr}/km`,splits:kmSplits});}}
-        onDiscard={()=>{clearInterval(timerRef.current);if(navigator.geolocation)navigator.geolocation.clearWatch(watchRef.current);onClose();}}
+        onDiscard={()=>{clearInterval(timerRef.current);if(navigator.geolocation&&watchRef.current!=null)navigator.geolocation.clearWatch(watchRef.current);onClose();}}
         onCancel={()=>setShowRunExit(false)}
       />}
     </div>
