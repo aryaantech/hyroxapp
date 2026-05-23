@@ -519,10 +519,79 @@ function ExerciseGifModal({name,onClose}){
 
 // ─── EXERCISE PICKER ─────────────────────────────────────────────────────────
 function ExercisePicker({extraLibrary,onSelect,onClose}){
-  const [search,setSearch]=useState("");const [cat,setCat]=useState("All");const [showAI,setShowAI]=useState(false);const [gifEx,setGifEx]=useState(null);
-  const allLib=[...ALL_EXERCISES,...extraLibrary];
+  const [search,setSearch]=useState("");
+  const [cat,setCat]=useState("All");
+  const [showAI,setShowAI]=useState(false);
+  const [gifEx,setGifEx]=useState(null);
+  const [creating,setCreating]=useState(false);
+  const [createName,setCreateName]=useState("");
+  const [createUnit,setCreateUnit]=useState("kg");
+  const [customLib,setCustomLib]=useState(()=>{try{return JSON.parse(localStorage.getItem('forge_custom_ex')||'[]');}catch{return[];}});
+
+  const allLib=[...ALL_EXERCISES,...extraLibrary,...customLib];
   const cats=["All",...Object.keys(EXERCISE_LIBRARY)];
   const filtered=allLib.filter(e=>(cat==="All"||e.category===cat)&&e.name.toLowerCase().includes(search.toLowerCase()));
+  const noMatch=search.trim().length>0&&filtered.length===0;
+
+  const saveCustomEx=()=>{
+    const name=createName.trim()||search.trim();
+    if(!name)return;
+    const unitLabels={"kg":"Reps & Weight","m":"Distance (m)","km":"Distance (km)","bw":"Bodyweight","sec":"Timed (sec)"};
+    const ex={name,unit:createUnit,category:"Custom",notes:unitLabels[createUnit]||"Custom exercise"};
+    const next=[...customLib,ex];
+    setCustomLib(next);
+    localStorage.setItem('forge_custom_ex',JSON.stringify(next));
+    onSelect(ex);
+    onClose();
+  };
+
+  if(creating)return(
+    <div style={{position:"fixed",inset:0,background:T.bg,zIndex:200,display:"flex",flexDirection:"column",maxWidth:430,margin:"0 auto"}}>
+      <div style={{background:T.surface,padding:"18px 16px 14px",borderBottom:`1px solid ${T.border}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:4}}>
+          <button onClick={()=>setCreating(false)} style={sBtnStyle}>←</button>
+          <div style={{fontSize:17,fontWeight:800,color:T.text1}}>Create Exercise</div>
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"24px 16px 100px"}}>
+        <div style={{marginBottom:20}}>
+          <div style={{fontSize:11,fontWeight:700,color:T.text2,letterSpacing:"0.08em",marginBottom:8}}>EXERCISE NAME</div>
+          <input
+            value={createName}
+            onChange={e=>setCreateName(e.target.value)}
+            placeholder="e.g. Cable Lateral Raise"
+            autoFocus
+            style={{width:"100%",padding:"14px 16px",borderRadius:14,border:`1.5px solid ${createName?T.orange:T.borderM}`,background:T.card,color:T.text1,fontSize:16,fontWeight:600,outline:"none"}}
+          />
+        </div>
+        <div style={{marginBottom:28}}>
+          <div style={{fontSize:11,fontWeight:700,color:T.text2,letterSpacing:"0.08em",marginBottom:10}}>METRIC TYPE</div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {[
+              {unit:"kg",  label:"Reps & Weight",   desc:"Track sets × reps × kg",          icon:"🏋️"},
+              {unit:"bw",  label:"Bodyweight",       desc:"Track sets × reps, no weight",     icon:"🤸"},
+              {unit:"m",   label:"Distance (metres)",desc:"Track distance in metres",         icon:"📏"},
+              {unit:"km",  label:"Distance (km)",    desc:"Track distance in kilometres",     icon:"🏃"},
+              {unit:"sec", label:"Timed",            desc:"Track sets by duration",           icon:"⏱"},
+            ].map(o=>(
+              <button key={o.unit} onClick={()=>setCreateUnit(o.unit)} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 16px",background:createUnit===o.unit?T.orangeL:T.card,border:`1.5px solid ${createUnit===o.unit?T.orange:T.border}`,borderRadius:14,cursor:"pointer",textAlign:"left",transition:"all 0.15s"}}>
+                <span style={{fontSize:22}}>{o.icon}</span>
+                <div>
+                  <div style={{fontSize:14,fontWeight:700,color:createUnit===o.unit?T.orange:T.text1}}>{o.label}</div>
+                  <div style={{fontSize:11,color:T.text2,marginTop:2}}>{o.desc}</div>
+                </div>
+                {createUnit===o.unit&&<div style={{marginLeft:"auto",width:20,height:20,borderRadius:"50%",background:T.orange,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#0D0F09",fontWeight:900}}>✓</div>}
+              </button>
+            ))}
+          </div>
+        </div>
+        <Btn onClick={saveCustomEx} color={T.orange} style={{opacity:createName.trim()||search.trim()?1:0.4}}>
+          CREATE &amp; ADD EXERCISE
+        </Btn>
+      </div>
+    </div>
+  );
+
   return(
     <div style={{position:"fixed",inset:0,background:T.bg,zIndex:200,display:"flex",flexDirection:"column",maxWidth:430,margin:"0 auto"}}>
       <div style={{background:T.surface,padding:"18px 16px 12px",borderBottom:`1px solid ${T.border}`}}>
@@ -539,6 +608,14 @@ function ExercisePicker({extraLibrary,onSelect,onClose}){
         </div>
       </div>
       <div style={{flex:1,overflowY:"auto",padding:"4px 16px 100px"}}>
+        {noMatch&&(
+          <div style={{padding:"28px 0 20px",textAlign:"center"}}>
+            <div style={{fontSize:13,color:T.text2,marginBottom:16}}>No results for "<span style={{color:T.text1,fontWeight:700}}>{search}</span>"</div>
+            <button onClick={()=>{setCreateName(search);setCreating(true);}} style={{padding:"12px 24px",background:T.orangeL,border:`1.5px solid ${T.orange}66`,borderRadius:50,color:T.orange,fontSize:13,fontWeight:800,cursor:"pointer",letterSpacing:"0.04em",fontFamily:"'Barlow Condensed',sans-serif"}}>
+              + CREATE "{search.toUpperCase()}"
+            </button>
+          </div>
+        )}
         {filtered.map((ex,i)=>(
           <div key={i} onClick={()=>{onSelect(ex);onClose();}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 0",borderBottom:`0.5px solid ${T.border}`,cursor:"pointer"}}>
             <div style={{flex:1,minWidth:0}}>
@@ -546,11 +623,18 @@ function ExercisePicker({extraLibrary,onSelect,onClose}){
               <div style={{fontSize:11,color:T.text2,marginTop:2}}>{ex.category} · {ex.notes}</div>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0,marginLeft:8}}>
-              <button onClick={e=>{e.stopPropagation();setGifEx(ex.name);}} style={{width:26,height:26,borderRadius:"50%",background:T.purpleL,border:`1px solid ${T.purple}44`,color:T.purple,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700}}>▶</button>
+              {ex.category!=="Custom"&&<button onClick={e=>{e.stopPropagation();setGifEx(ex.name);}} style={{width:26,height:26,borderRadius:"50%",background:T.purpleL,border:`1px solid ${T.purple}44`,color:T.purple,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700}}>▶</button>}
               <div style={{fontSize:20,color:T.text3}}>+</div>
             </div>
           </div>
         ))}
+        {!noMatch&&(
+          <div style={{paddingTop:20,paddingBottom:8,borderTop:`1px solid ${T.border}`,marginTop:8}}>
+            <button onClick={()=>{setCreateName(search);setCreating(true);}} style={{width:"100%",padding:"13px",background:T.card,border:`1.5px dashed ${T.border}`,borderRadius:14,color:T.text2,fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.02em",fontFamily:"'Barlow Condensed',sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+              <span style={{fontSize:16,color:T.orange}}>+</span> Can't find it? Create custom exercise
+            </button>
+          </div>
+        )}
       </div>
       {showAI&&<AIExerciseAdder onAdd={ex=>extraLibrary.push({...ex,category:ex.category||"Cardio"})} onClose={()=>setShowAI(false)}/>}
       {gifEx&&<ExerciseGifModal name={gifEx} onClose={()=>setGifEx(null)}/>}
