@@ -671,7 +671,7 @@ function ExitConfirmModal({onSave,onDiscard,onCancel}){
 }
 
 // ─── ACTIVE WORKOUT ──────────────────────────────────────────────────────────
-function ActiveWorkout({workout,history,onDone,onBack}){
+function ActiveWorkout({workout,history,onDone,onCombine,onBack}){
   const [phase,setPhase]=useState("ready");
   const [paused,setPaused]=useState(false);
   const [exIdx,setExIdx]=useState(0);
@@ -762,6 +762,8 @@ function ActiveWorkout({workout,history,onDone,onBack}){
   if(phase==="done"){
     try{sessionStorage.removeItem('forge_wip_'+workout.id);}catch{}
     const doneW={...workout,duration:elapsed,exercises:exList.map((ex,i)=>({...ex,setLogs:setLogs[i]||[]}))};
+    const todayStr=today();
+    const sameToday=history.find(l=>l.name===workout.name&&l.date===todayStr);
     return(
       <div style={{padding:"16px 16px 100px",overflowY:"auto",minHeight:"100vh"}}>
         <button onClick={onBack} style={{...sBtnStyle,marginBottom:20}}>←</button>
@@ -830,7 +832,19 @@ function ActiveWorkout({workout,history,onDone,onBack}){
         )}
         <AIAnalysis workout={doneW} history={history}/>
         <div style={{height:16}}/>
-        <Btn onClick={()=>onDone(doneW)} color={T.green}>Save & Exit</Btn>
+        {sameToday&&onCombine?(
+          <div style={{background:T.purpleL,border:`1.5px solid ${T.purple}44`,borderRadius:18,padding:"16px 18px",marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:800,color:T.purple,letterSpacing:"0.08em",marginBottom:6}}>ALREADY TRAINED TODAY</div>
+            <div style={{fontSize:13,color:T.text1,fontWeight:600,marginBottom:4}}>{workout.name}</div>
+            <div style={{fontSize:12,color:T.text2,marginBottom:14,lineHeight:1.5}}>You logged this workout earlier today ({sameToday.detail}). Combine both sessions into one? Sets from both will be merged per exercise.</div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>onCombine(doneW,sameToday)} style={{flex:1,padding:"13px",background:T.purple,border:"none",borderRadius:50,color:"#fff",fontSize:13,fontWeight:800,cursor:"pointer",letterSpacing:"0.05em",fontFamily:"'Barlow Condensed',sans-serif"}}>⊕ COMBINE</button>
+              <button onClick={()=>onDone(doneW)} style={{flex:1,padding:"13px",background:T.card,border:`1px solid ${T.border}`,borderRadius:50,color:T.text2,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Barlow Condensed',sans-serif"}}>Save Separately</button>
+            </div>
+          </div>
+        ):(
+          <Btn onClick={()=>onDone(doneW)} color={T.green}>Save & Exit</Btn>
+        )}
       </div>
     );
   }
@@ -1906,10 +1920,22 @@ function TrainingTab({logs,addLog,deleteLog}){
   const deleteCustom=id=>{const next=customs.filter(c=>c.id!==id);setCustoms(next);localStorage.setItem('forge_customs',JSON.stringify(next));};
   const startWorkout=t=>{setActive({...t,exercises:t.exercises.map(e=>({...e}))});setScreen("active");};
   const complete=result=>{addLog({type:result.tag==="CUSTOM"?"CUSTOM":result.tag==="CARDIO"?"CARDIO":"STRENGTH",name:result.name,duration:result.duration,date:today(),detail:`${result.doneSets||0}/${result.totalSets||0} sets`,exercises:result.exercises});setScreen("home");};
+  const completeCombined=(result,existing)=>{
+    const merged=[...(existing.exercises||[]).map(e=>({...e,setLogs:[...(e.setLogs||[])]}))];
+    (result.exercises||[]).forEach(newEx=>{
+      const idx=merged.findIndex(e=>e.name===newEx.name);
+      if(idx>=0)merged[idx].setLogs=[...merged[idx].setLogs,...(newEx.setLogs||[])];
+      else merged.push({...newEx});
+    });
+    const totalSets=merged.reduce((a,e)=>a+(e.setLogs?.length||0),0);
+    deleteLog(existing._id);
+    addLog({type:result.tag==="CUSTOM"?"CUSTOM":result.tag==="CARDIO"?"CARDIO":"STRENGTH",name:result.name,duration:(existing.duration||0)+result.duration,date:today(),detail:`${totalSets} sets · combined`,exercises:merged});
+    setScreen("home");
+  };
 
   const reattemptWorkout=log=>{const t={id:`reattempt-${log._id}`,name:log.name,tag:log.type,_originalLog:log,exercises:(log.exercises||[]).map(ex=>({...ex,weight:ex.setLogs?.slice(-1)[0]?.weight||ex.weight||"",reps:ex.setLogs?.slice(-1)[0]?.reps||ex.reps||0}))};setActive(t);setSelectedSession(null);setScreen("active");};
   if(selectedSession)return <SessionDetail log={selectedSession} onDelete={()=>{deleteLog(selectedSession._id);setSelectedSession(null);}} onClose={()=>setSelectedSession(null)} onReattempt={reattemptWorkout}/>;
-  if(screen==="active"&&active)return <ActiveWorkout workout={active} history={logs} onDone={complete} onBack={()=>setScreen("home")}/>;
+  if(screen==="active"&&active)return <ActiveWorkout workout={active} history={logs} onDone={complete} onCombine={completeCombined} onBack={()=>setScreen("home")}/>;
   if(screen==="builder")return <WorkoutBuilder extraLibrary={extraLib} onSave={saveCustom} onClose={()=>setScreen("home")}/>;
   if(screen==="prs")return <PRScreen logs={logs} onBack={()=>setScreen("home")}/>;
 
