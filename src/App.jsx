@@ -677,37 +677,91 @@ function ActiveWorkout({workout,history,onDone,onBack}){
   const [exIdx,setExIdx]=useState(0);
   const [gifEx,setGifEx]=useState(null);
   const [showExitModal,setShowExitModal]=useState(false);
+  const [midPicker,setMidPicker]=useState(false);
+  const [exList,setExList]=useState(()=>workout.exercises);
   const [elapsed,setElapsed]=useState(0);
-  const [setLogs,setSetLogs]=useState(()=>workout.exercises.map(()=>[]));
+  const [setLogs,setSetLogs]=useState(()=>{
+    try{const saved=JSON.parse(sessionStorage.getItem('forge_wip_'+workout.id)||'null');if(saved?.setLogs)return saved.setLogs;}catch{}
+    return workout.exercises.map(()=>[]);
+  });
   const [lastSetTime,setLastSetTime]=useState(null);
-  const [weights,setWeights]=useState(()=>workout.exercises.map(e=>e.weight||""));
-  const [reps,setReps]=useState(()=>workout.exercises.map(e=>String(e.reps)||""));
+  const [weights,setWeights]=useState(()=>{
+    try{const saved=JSON.parse(sessionStorage.getItem('forge_wip_'+workout.id)||'null');if(saved?.weights)return saved.weights;}catch{}
+    return workout.exercises.map(e=>String(e.weight||"").replace(/\s*kg$/i,''));
+  });
+  const [reps,setReps]=useState(()=>{
+    try{const saved=JSON.parse(sessionStorage.getItem('forge_wip_'+workout.id)||'null');if(saved?.reps)return saved.reps;}catch{}
+    return workout.exercises.map(e=>String(e.reps)||"");
+  });
+
+  const addMidExercise=ex=>{
+    const newEx={...ex,sets:3,reps:ex.unit==="m"||ex.unit==="km"||ex.unit==="cal"?"":ex.reps||"10",weight:ex.unit==="bw"||ex.unit==="reps"?"BW":""};
+    const newIdx=exList.length;
+    setExList(p=>[...p,newEx]);
+    setSetLogs(p=>[...p,[]]);
+    setWeights(p=>[...p,newEx.unit==="bw"?"BW":""]);
+    setReps(p=>[...p,newEx.unit==="m"||newEx.unit==="km"?"":newEx.reps||"10"]);
+    setExIdx(newIdx);
+    setMidPicker(false);
+  };
   const [restActive,setRestActive]=useState(false);
   const [restSecs,setRestSecs]=useState(0);
   const [restPreset,setRestPreset]=useState(90);
   const timerRef=useRef(null);const restRef=useRef(null);
+  const tsStartRef=useRef(null);
+  const pausedAccRef=useRef(0);
+  const pauseTsRef=useRef(null);
 
-  useEffect(()=>{if(phase==="active"&&!paused){timerRef.current=setInterval(()=>setElapsed(s=>s+1),1000);}else clearInterval(timerRef.current);return()=>clearInterval(timerRef.current);},[phase,paused]);
+  const getElapsed=()=>tsStartRef.current?Math.floor((Date.now()-tsStartRef.current-pausedAccRef.current)/1000):0;
+
+  useEffect(()=>{
+    if(phase==="active"&&!paused){
+      if(!tsStartRef.current)tsStartRef.current=Date.now()-elapsed*1000;
+      if(pauseTsRef.current){pausedAccRef.current+=Date.now()-pauseTsRef.current;pauseTsRef.current=null;}
+      const tick=()=>setElapsed(getElapsed());
+      timerRef.current=setInterval(tick,1000);tick();
+    }else{
+      clearInterval(timerRef.current);
+      if(phase==="active"&&paused&&!pauseTsRef.current)pauseTsRef.current=Date.now();
+    }
+    return()=>clearInterval(timerRef.current);
+  },[phase,paused]);
+  useEffect(()=>{
+    const handler=()=>{if(!document.hidden&&phase==="active"&&!paused)setElapsed(getElapsed());};
+    document.addEventListener("visibilitychange",handler);
+    return()=>document.removeEventListener("visibilitychange",handler);
+  },[phase,paused]);
   useEffect(()=>{if(restActive&&restSecs>0)restRef.current=setInterval(()=>setRestSecs(s=>s-1),1000);else{clearInterval(restRef.current);if(restSecs===0&&restActive)setRestActive(false);}return()=>clearInterval(restRef.current);},[restActive,restSecs]);
 
   const logSet=()=>{
     const now=Date.now();const duration=lastSetTime?now-lastSetTime:0;
-    setSetLogs(prev=>{const next=[...prev];next[exIdx]=[...next[exIdx],{reps:reps[exIdx],weight:weights[exIdx],duration,restAfter:0,timestamp:now}];return next;});
+    const newEntry={reps:reps[exIdx],weight:weights[exIdx],duration,restAfter:0,timestamp:now};
+    setSetLogs(prev=>{
+      const next=[...prev];next[exIdx]=[...next[exIdx],newEntry];
+      try{sessionStorage.setItem('forge_wip_'+workout.id,JSON.stringify({setLogs:next,weights,reps}));}catch{}
+      return next;
+    });
     setLastSetTime(now);setRestActive(true);setRestSecs(restPreset);
   };
   const deleteSet=(ei,si)=>setSetLogs(prev=>{const next=[...prev];next[ei]=next[ei].filter((_,idx)=>idx!==si);return next;});
 
-  const totalSets=workout.exercises.reduce((a,e)=>a+e.sets,0);
+  const totalSets=exList.reduce((a,e)=>a+e.sets,0);
   const doneSets=setLogs.reduce((a,l)=>a+l.length,0);
   const pct=Math.round(doneSets/totalSets*100);
-  const curEx=workout.exercises[exIdx];
+  const curEx=exList[exIdx];
   const curLogs=setLogs[exIdx];
   const setsLeft=curEx?curEx.sets-curLogs.length:0;
+  const DIST_ONLY=new Set(["Ski Erg","Rowing (Erg)","Run","Cycling","Shuttle Runs","Burpee Broad Jump","Assault Bike","Broad Jump","Battle Ropes"]);
+  const DIST_WEIGHT=new Set(["Sled Push","Sled Pull","Sled Push Intervals","Farmers Carry","Sandbag Lunges"]);
+  const isDistOnly=curEx&&DIST_ONLY.has(curEx.name);
+  const isDistWeight=curEx&&DIST_WEIGHT.has(curEx.name);
+  const distUnit=curEx?.name==="Run"||curEx?.name==="Cycling"?"km":"m";
   const restPct=restSecs/restPreset;
   const restCol=restSecs>restPreset*.5?T.green:restSecs>restPreset*.2?T.orange:T.red;
 
   if(phase==="done"){
-    const doneW={...workout,duration:elapsed,exercises:workout.exercises.map((ex,i)=>({...ex,setLogs:setLogs[i]}))};
+    try{sessionStorage.removeItem('forge_wip_'+workout.id);}catch{}
+    const doneW={...workout,duration:elapsed,exercises:exList.map((ex,i)=>({...ex,setLogs:setLogs[i]||[]}))};
     return(
       <div style={{padding:"16px 16px 100px",overflowY:"auto",minHeight:"100vh"}}>
         <button onClick={onBack} style={{...sBtnStyle,marginBottom:20}}>←</button>
@@ -717,7 +771,7 @@ function ActiveWorkout({workout,history,onDone,onBack}){
           <div style={{fontSize:14,color:T.text2}}>{doneSets}/{totalSets} sets · {fmt(elapsed)}</div>
         </div>
         <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,overflow:"hidden",marginBottom:14}}>
-          {workout.exercises.map((ex,ei)=>(
+          {exList.map((ex,ei)=>(
             <div key={ei}>{ei>0&&<Divider/>}
               <div style={{padding:"13px 16px"}}>
                 <div style={{fontSize:14,fontWeight:600,color:T.text1,marginBottom:8}}>{ex.name}</div>
@@ -735,6 +789,45 @@ function ActiveWorkout({workout,history,onDone,onBack}){
             </div>
           ))}
         </div>
+        {workout._originalLog?.exercises?.length>0&&(
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:11,fontWeight:800,color:T.text2,letterSpacing:"0.08em",marginBottom:10}}>PROGRESS vs {workout._originalLog.date?.toUpperCase()}</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {exList.map((ex,ei)=>{
+                const prevEx=(workout._originalLog.exercises||[]).find(e=>e.name===ex.name);
+                const newSets=setLogs[ei]||[];
+                const prevSets=prevEx?.setLogs||[];
+                if(!prevSets.length&&!newSets.length)return null;
+                const prevVol=prevSets.reduce((a,s)=>{const w=parseFloat(s.weight)||0;const r=parseInt(s.reps)||0;return a+(w>0?w*r:r);},0);
+                const newVol=newSets.reduce((a,s)=>{const w=parseFloat(s.weight)||0;const r=parseInt(s.reps)||0;return a+(w>0?w*r:r);},0);
+                const delta=prevVol>0?Math.round((newVol-prevVol)/prevVol*100):null;
+                const improved=newVol>prevVol;const same=newVol===prevVol;
+                return(
+                  <div key={ei} style={{background:T.card,border:`1px solid ${improved?T.green+"33":same?T.border:T.red+"22"}`,borderRadius:14,overflow:"hidden"}}>
+                    <div style={{padding:"10px 14px",background:T.surface,display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:`1px solid ${T.border}`}}>
+                      <div style={{fontSize:13,fontWeight:700,color:T.text1}}>{ex.name}</div>
+                      {delta!==null&&<div style={{fontSize:11,fontWeight:800,letterSpacing:"0.06em",color:improved?T.green:same?T.text3:T.red}}>{improved?`↑ +${delta}%`:same?"= SAME":`↓ ${Math.abs(delta)}%`}</div>}
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr"}}>
+                      <div style={{padding:"10px 14px",borderRight:`1px solid ${T.border}`}}>
+                        <div style={{fontSize:9,color:T.text3,letterSpacing:"0.08em",marginBottom:6}}>BEFORE</div>
+                        {prevSets.length>0?prevSets.map((s,si)=>(
+                          <div key={si} style={{fontSize:12,color:T.text2,marginBottom:3,fontVariantNumeric:"tabular-nums"}}><span style={{color:T.text3,marginRight:4}}>{si+1}.</span>{s.reps}× {s.weight&&s.weight!=="BW"?`${String(s.weight).replace(/\s*kg$/i,'')}kg`:"BW"}</div>
+                        )):<div style={{fontSize:11,color:T.text3}}>No data</div>}
+                      </div>
+                      <div style={{padding:"10px 14px",background:improved?T.greenL:"transparent"}}>
+                        <div style={{fontSize:9,color:improved?T.green:T.text3,letterSpacing:"0.08em",marginBottom:6}}>NOW</div>
+                        {newSets.length>0?newSets.map((s,si)=>(
+                          <div key={si} style={{fontSize:12,fontWeight:600,color:improved?T.green:T.text1,marginBottom:3,fontVariantNumeric:"tabular-nums"}}><span style={{opacity:0.5,marginRight:4}}>{si+1}.</span>{s.reps}× {s.weight&&s.weight!=="BW"?`${String(s.weight).replace(/\s*kg$/i,'')}kg`:"BW"}</div>
+                        )):<div style={{fontSize:11,color:T.text3}}>None logged</div>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }).filter(Boolean)}
+            </div>
+          </div>
+        )}
         <AIAnalysis workout={doneW} history={history}/>
         <div style={{height:16}}/>
         <Btn onClick={()=>onDone(doneW)} color={T.green}>Save & Exit</Btn>
@@ -750,11 +843,11 @@ function ActiveWorkout({workout,history,onDone,onBack}){
           <div style={{fontSize:11,fontWeight:700,color:T.text2,letterSpacing:"0.12em",marginBottom:10}}>READY TO START</div>
           <div style={{fontSize:32,fontWeight:900,color:T.text1,marginBottom:10,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.02em"}}>{workout.name}</div>
           <Pill label={workout.tag} type={workout.tag}/>
-          <div style={{fontSize:13,color:T.text2,marginTop:12}}>{workout.exercises.length} exercises · {totalSets} total sets</div>
+          <div style={{fontSize:13,color:T.text2,marginTop:12}}>{exList.length} exercises · {totalSets} total sets</div>
         </div>
         <div style={{background:T.card,borderRadius:20,padding:"6px 0",marginBottom:20,overflow:"hidden",border:`1px solid ${T.border}`}}>
-          {workout.exercises.map((ex,i)=>(
-            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 18px",borderBottom:i<workout.exercises.length-1?`1px solid ${T.border}`:"none"}}>
+          {exList.map((ex,i)=>(
+            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 18px",borderBottom:i<exList.length-1?`1px solid ${T.border}`:"none"}}>
               <div style={{flex:1,fontSize:14,fontWeight:600,color:T.text1}}>{ex.name}</div>
               <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
                 <div style={{fontSize:12,color:T.text2,background:T.surface,padding:"3px 10px",borderRadius:20}}>{ex.sets}×{ex.reps} {ex.weight&&`· ${ex.weight}`}</div>
@@ -802,15 +895,16 @@ function ActiveWorkout({workout,history,onDone,onBack}){
       <div style={{flex:1,padding:"12px 16px 90px",overflowY:"auto"}}>
         {/* Exercise nav — asymmetric pill chips */}
         <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:4}}>
-          {workout.exercises.map((ex,i)=>{
-            const done=setLogs[i].length>=ex.sets;const active=i===exIdx;
+          {exList.map((ex,i)=>{
+            const done=setLogs[i]&&setLogs[i].length>=ex.sets;const active=i===exIdx;
             return(
               <button key={i} onClick={()=>setExIdx(i)} style={{flexShrink:0,padding:"6px 14px",borderRadius:active?"6px 20px 20px 6px":"20px",border:`1.5px solid ${active?T.orange:done?T.green:T.border}`,background:active?T.orangeL:done?T.greenL:T.card,color:active?T.orange:done?T.green:T.text2,fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",transition:"all 0.2s",letterSpacing:"0.04em"}}>
                 {done?"✓ ":""}{ex.name.split(" ").slice(0,2).join(" ")}
-                <span style={{opacity:0.7,marginLeft:4}}>{setLogs[i].length}/{ex.sets}</span>
+                <span style={{opacity:0.7,marginLeft:4}}>{(setLogs[i]||[]).length}/{ex.sets}</span>
               </button>
             );
           })}
+          <button onClick={()=>setMidPicker(true)} style={{flexShrink:0,padding:"6px 14px",borderRadius:20,border:`1.5px dashed ${T.orange}66`,background:T.orangeL,color:T.orange,fontSize:11,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap",letterSpacing:"0.04em"}}>+ ADD</button>
         </div>
 
         {curEx&&<div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:20,padding:"18px 16px",marginBottom:12}}>
@@ -825,23 +919,52 @@ function ActiveWorkout({workout,history,onDone,onBack}){
             <Pill label={curEx.category||workout.tag} type={workout.tag}/>
           </div>
           {/* Previous session benchmark */}
-          {(()=>{const prev=history.flatMap(h=>h.exercises||[]).filter(e=>e.name===curEx.name&&e.setLogs?.length>0).slice(-1)[0];const ps=prev?.setLogs?.slice(-1)[0];if(!ps)return null;const suggested=ps.weight&&ps.weight!=="BW"?Math.ceil((parseFloat(ps.weight)||0)*1.025/2.5)*2.5:null;return(<div style={{background:T.orangeL,border:`1px solid ${T.orange}33`,borderRadius:12,padding:"9px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
-            <div style={{fontSize:10,fontWeight:800,color:T.orange,letterSpacing:"0.08em",flexShrink:0}}>LAST</div>
-            <div style={{flex:1,fontSize:13,color:T.text1,fontWeight:600}}>{ps.reps} reps × {ps.weight&&ps.weight!=="BW"?`${ps.weight}kg`:"bodyweight"}</div>
-            {suggested&&<div style={{fontSize:11,fontWeight:700,color:T.green,flexShrink:0}}>Try {suggested}kg ↑</div>}
+          {(()=>{const prev=history.flatMap(h=>h.exercises||[]).filter(e=>e.name===curEx.name&&e.setLogs?.length>0).slice(-1)[0];const ps=prev?.setLogs?.slice(-1)[0];if(!ps)return null;const suggested=ps.weight&&ps.weight!=="BW"?Math.ceil((parseFloat(ps.weight)||0)*1.025/2.5)*2.5:null;return(<div style={{background:T.orangeL,border:`1px solid ${T.orange}33`,borderRadius:12,padding:"10px 14px",marginBottom:12}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:suggested?8:0}}>
+              <div style={{fontSize:10,fontWeight:800,color:T.orange,letterSpacing:"0.08em",flexShrink:0}}>LAST SESSION</div>
+              <div style={{flex:1,fontSize:13,color:T.text1,fontWeight:600}}>{ps.reps} reps × {ps.weight&&ps.weight!=="BW"?`${String(ps.weight).replace(/\s*kg$/i,'')}kg`:"bodyweight"}</div>
+            </div>
+            {suggested&&(<div style={{display:"flex",gap:8}}>
+              <button onClick={()=>{const n=[...weights];n[exIdx]=String(suggested);setWeights(n);}} style={{flex:1,padding:"8px 10px",background:T.green,border:"none",borderRadius:20,color:"#0D0F09",fontSize:11,fontWeight:800,cursor:"pointer",letterSpacing:"0.04em",fontFamily:"'Barlow Condensed',sans-serif"}}>↑ INCREASE TO {suggested}kg</button>
+              <button onClick={()=>{const n=[...weights];n[exIdx]=String(ps.weight).replace(/\s*kg$/i,'');setWeights(n);}} style={{flex:1,padding:"8px 10px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:20,color:T.text2,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Barlow Condensed',sans-serif"}}>KEEP {String(ps.weight).replace(/\s*kg$/i,'')}kg</button>
+            </div>)}
           </div>);})()}
           {/* Reps + Weight inputs */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-            {[["REPS",reps,setReps],["WEIGHT",weights,setWeights]].map(([label,arr,setter])=>(
-              <div key={label} style={{background:T.surface,borderRadius:14,padding:"12px 14px",border:`1px solid ${T.border}`}}>
-                <div style={{fontSize:10,color:T.text2,fontWeight:700,marginBottom:8,letterSpacing:"0.08em"}}>{label}</div>
-                <input value={arr[exIdx]} onChange={e=>{const n=[...arr];n[exIdx]=e.target.value;setter(n);}} style={{width:"100%",background:"transparent",border:"none",color:T.text1,fontSize:22,fontWeight:900,textAlign:"center",fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.02em"}}/>
-              </div>
-            ))}
+          <div style={{display:"grid",gridTemplateColumns:isDistWeight?"1fr 1fr 1fr":"1fr 1fr",gap:10,marginBottom:14}}>
+            {isDistWeight?(
+              <>
+                <div style={{background:T.surface,borderRadius:14,padding:"12px 14px",border:`1px solid ${T.border}`}}>
+                  <div style={{fontSize:10,color:T.text2,fontWeight:700,marginBottom:8,letterSpacing:"0.08em"}}>WEIGHT</div>
+                  <input value={weights[exIdx]} onChange={e=>{const n=[...weights];n[exIdx]=e.target.value;setWeights(n);}} style={{width:"100%",background:"transparent",border:"none",color:T.text1,fontSize:20,fontWeight:900,textAlign:"center",fontFamily:"'Barlow Condensed',sans-serif"}}/>
+                </div>
+                <div style={{background:T.surface,borderRadius:14,padding:"12px 14px",border:`1px solid ${T.border}`}}>
+                  <div style={{fontSize:10,color:T.text2,fontWeight:700,marginBottom:8,letterSpacing:"0.08em"}}>DIST ({distUnit})</div>
+                  <input value={reps[exIdx]} onChange={e=>{const n=[...reps];n[exIdx]=e.target.value;setReps(n);}} style={{width:"100%",background:"transparent",border:"none",color:T.text1,fontSize:20,fontWeight:900,textAlign:"center",fontFamily:"'Barlow Condensed',sans-serif"}}/>
+                </div>
+                <div style={{background:T.surface,borderRadius:14,padding:"12px 14px",border:`1px solid ${T.border}`}}>
+                  <div style={{fontSize:10,color:T.text2,fontWeight:700,marginBottom:8,letterSpacing:"0.08em"}}>SETS</div>
+                  <div style={{textAlign:"center",fontSize:20,fontWeight:900,color:T.text2,fontFamily:"'Barlow Condensed',sans-serif"}}>{curLogs.length+1}/{curEx.sets}</div>
+                </div>
+              </>
+            ):isDistOnly?(
+              <>
+                <div style={{background:T.surface,borderRadius:14,padding:"12px 14px",border:`1px solid ${T.border}`,gridColumn:"span 2"}}>
+                  <div style={{fontSize:10,color:T.text2,fontWeight:700,marginBottom:8,letterSpacing:"0.08em"}}>DISTANCE ({distUnit})</div>
+                  <input value={reps[exIdx]} onChange={e=>{const n=[...reps];n[exIdx]=e.target.value;setReps(n);}} style={{width:"100%",background:"transparent",border:"none",color:T.text1,fontSize:28,fontWeight:900,textAlign:"center",fontFamily:"'Barlow Condensed',sans-serif"}}/>
+                </div>
+              </>
+            ):(
+              [["REPS",reps,setReps],["WEIGHT (kg)",weights,setWeights]].map(([label,arr,setter])=>(
+                <div key={label} style={{background:T.surface,borderRadius:14,padding:"12px 14px",border:`1px solid ${T.border}`}}>
+                  <div style={{fontSize:10,color:T.text2,fontWeight:700,marginBottom:8,letterSpacing:"0.08em"}}>{label}</div>
+                  <input value={arr[exIdx]} onChange={e=>{const n=[...arr];n[exIdx]=e.target.value;setter(n);}} style={{width:"100%",background:"transparent",border:"none",color:T.text1,fontSize:22,fontWeight:900,textAlign:"center",fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.02em"}}/>
+                </div>
+              ))
+            )}
           </div>
           {/* Log set button */}
-          <button onClick={logSet} disabled={setsLeft<=0||paused} style={{width:"100%",padding:"15px",background:setsLeft<=0?T.greenL:restActive?T.greenL:T.orange,color:setsLeft<=0?T.green:restActive?T.green:"#0D0F09",border:"none",borderRadius:50,fontSize:15,fontWeight:800,cursor:setsLeft>0&&!paused?"pointer":"default",letterSpacing:"0.05em",fontFamily:"'Barlow Condensed',sans-serif",transition:"all 0.2s"}}>
-            {paused?"⏸ PAUSED — RESUME TO LOG":setsLeft<=0?"✓ ALL SETS DONE":restActive?`⏱ REST ${fmt(restSecs)} — TAP TO LOG NEXT SET`:`LOG SET ${curLogs.length+1} / ${curEx.sets}`}
+          <button onClick={logSet} disabled={paused} style={{width:"100%",padding:"15px",background:paused?T.surface:restActive?T.greenL:setsLeft<=0?T.orangeL:T.orange,color:paused?T.text3:restActive?T.green:setsLeft<=0?T.orange:"#0D0F09",border:setsLeft<=0&&!paused&&!restActive?`1.5px solid ${T.orange}`:"none",borderRadius:50,fontSize:15,fontWeight:800,cursor:paused?"default":"pointer",letterSpacing:"0.05em",fontFamily:"'Barlow Condensed',sans-serif",transition:"all 0.2s"}}>
+            {paused?"⏸ PAUSED — RESUME TO LOG":restActive?`⏱ REST ${fmt(restSecs)} — TAP TO LOG NEXT SET`:setsLeft<=0?`+ LOG EXTRA SET ${curLogs.length+1}`:`LOG SET ${curLogs.length+1} / ${curEx.sets}`}
           </button>
           {/* Rest bar */}
           {restActive&&<div style={{marginTop:10}}>
@@ -861,9 +984,10 @@ function ActiveWorkout({workout,history,onDone,onBack}){
                 <div key={si} style={{display:"flex",alignItems:"center",padding:"10px 14px",borderBottom:si<curLogs.length-1?`1px solid ${T.border}`:"none"}}>
                   <div style={{width:24,height:24,borderRadius:"50%",background:T.greenL,border:`1px solid ${T.green}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:T.green,flexShrink:0,marginRight:12}}>{si+1}</div>
                   <div style={{flex:1,display:"flex",gap:10,alignItems:"center"}}>
-                    <span style={{fontSize:15,fontWeight:900,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",minWidth:52}}>{s.reps} reps</span>
-                    <span style={{fontSize:11,color:T.text3}}>·</span>
-                    <span style={{fontSize:15,fontWeight:900,color:T.orange,fontFamily:"'Barlow Condensed',sans-serif"}}>{s.weight||"bw"}</span>
+                    {(()=>{const isDO=DIST_ONLY.has(curEx?.name);const isDW=DIST_WEIGHT.has(curEx?.name);const du=curEx?.name==="Run"||curEx?.name==="Cycling"?"km":"m";return(<>
+                      <span style={{fontSize:15,fontWeight:900,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",minWidth:52}}>{isDO||isDW?`${s.reps}${du}`:`${s.reps} reps`}</span>
+                      {!isDO&&<><span style={{fontSize:11,color:T.text3}}>·</span><span style={{fontSize:15,fontWeight:900,color:T.orange,fontFamily:"'Barlow Condensed',sans-serif"}}>{s.weight&&s.weight!=="BW"?`${String(s.weight).replace(/\s*kg$/i,'')}kg`:"BW"}</span></>}
+                    </>);})()}
                     {s.duration>0&&<span style={{fontSize:10,color:T.text3,marginLeft:"auto"}}>{fmtMs(s.duration)}</span>}
                   </div>
                   <button onClick={()=>deleteSet(exIdx,si)} style={{width:22,height:22,borderRadius:"50%",background:T.redL,border:`1px solid ${T.red}44`,color:T.red,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,flexShrink:0,marginLeft:8}}>✕</button>
@@ -876,14 +1000,15 @@ function ActiveWorkout({workout,history,onDone,onBack}){
         {/* Prev / Next / Finish */}
         <div style={{display:"flex",gap:10,marginBottom:12}}>
           {exIdx>0&&<GhostBtn onClick={()=>setExIdx(i=>i-1)} style={{flex:1}}>← Prev</GhostBtn>}
-          {exIdx<workout.exercises.length-1
+          {exIdx<exList.length-1
             ?<Btn onClick={()=>setExIdx(i=>i+1)} color={T.blue} style={{flex:1,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.05em"}}>NEXT EXERCISE →</Btn>
             :<Btn onClick={()=>setPhase("done")} color={T.green} style={{flex:1,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.05em"}}>FINISH WORKOUT</Btn>}
         </div>
       </div>
       {gifEx&&<ExerciseGifModal name={gifEx} onClose={()=>setGifEx(null)}/>}
+      {midPicker&&<ExercisePicker extraLibrary={[]} onSelect={addMidExercise} onClose={()=>setMidPicker(false)}/>}
       {showExitModal&&<ExitConfirmModal
-        onSave={()=>{const doneW={...workout,duration:elapsed,exercises:workout.exercises.map((ex,i)=>({...ex,setLogs:setLogs[i]}))};onDone(doneW);}}
+        onSave={()=>{const doneW={...workout,duration:elapsed,exercises:exList.map((ex,i)=>({...ex,setLogs:setLogs[i]||[]}))};onDone(doneW);}}
         onDiscard={()=>onBack()}
         onCancel={()=>setShowExitModal(false)}
       />}
@@ -996,6 +1121,7 @@ function HyroxTab({logs,addLog,deleteLog}){
   const [showBuilder,setShowBuilder]=useState(false);
   const [savedCustoms,setSavedCustoms]=useState([]);
   const [detailSim,setDetailSim]=useState(null);
+  const [showSessions,setShowSessions]=useState(false);
   const timerRef=useRef(null);
 
   useEffect(()=>{if(simActive&&!simPaused)timerRef.current=setInterval(()=>setElapsed(s=>s+1),1000);else clearInterval(timerRef.current);return()=>clearInterval(timerRef.current);},[simActive,simPaused]);
@@ -1022,7 +1148,29 @@ function HyroxTab({logs,addLog,deleteLog}){
   const stations=HYROX_BASE_STATIONS;
 
   if(showBuilder)return <HyroxCustomBuilder onSave={c=>{setSavedCustoms(p=>[c,...p]);setShowBuilder(false);}} onClose={()=>setShowBuilder(false)}/>;
-  if(detailSim)return <SessionDetail log={detailSim} onDelete={()=>{deleteLog(detailSim._id);setDetailSim(null);}} onClose={()=>setDetailSim(null)}/>;
+  if(detailSim)return <SessionDetail log={detailSim} onDelete={()=>{deleteLog(detailSim._id);setDetailSim(null);}} onClose={()=>setDetailSim(null)} onReattempt={()=>{const m=detailSim.mode;setDetailSim(null);setShowSessions(false);setMode(m);}}/>;
+
+  if(showSessions)return(
+    <div style={{padding:"20px 16px 100px",overflowY:"auto",minHeight:"100vh"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+        <button onClick={()=>setShowSessions(false)} style={sBtnStyle}>←</button>
+        <div><div style={{fontSize:26,fontWeight:900,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.02em"}}>MY HYROX SESSIONS</div><div style={{fontSize:12,color:T.text2,marginTop:2}}>{hyroxLogs.length} race{hyroxLogs.length!==1?"s":""} completed</div></div>
+      </div>
+      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,overflow:"hidden"}}>
+        {hyroxLogs.length===0?(<div style={{padding:"32px 16px",textAlign:"center",fontSize:13,color:T.text3}}>No races logged yet</div>):hyroxLogs.map((l,i)=>(
+          <div key={i}>{i>0&&<Divider/>}
+            <button onClick={()=>setDetailSim(l)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
+              <div><div style={{fontSize:14,fontWeight:700,color:T.text1}}>{l.name}</div><div style={{fontSize:12,color:T.text2,marginTop:2}}>{l.date} · {l.detail}</div></div>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{fontSize:15,fontWeight:800,color:T.orange,fontVariantNumeric:"tabular-nums",fontFamily:"'Barlow Condensed',sans-serif"}}>{fmt(l.duration)}</div>
+                <div style={{fontSize:11,color:T.text3}}>›</div>
+              </div>
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   if(simActive&&mode){
     const st=HYROX_BASE_STATIONS[station];const isRun=phase==="run";
@@ -1090,22 +1238,18 @@ function HyroxTab({logs,addLog,deleteLog}){
         <img src="/hyrox.jpg" alt="Hyrox" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center 30%",display:"block"}}/>
         <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom,rgba(13,15,9,0) 40%,rgba(13,15,9,0.7) 100%)"}}/>
       </div>
-      {hyroxLogs.length>0&&<>
-        <SL>MY HYROX SESSIONS</SL>
-        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,overflow:"hidden",marginBottom:20}}>
-          {hyroxLogs.map((l,i)=>(
-            <div key={i}>{i>0&&<Divider/>}
-              <div onClick={()=>setDetailSim(l)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 16px",cursor:"pointer"}}>
-                <div><div style={{fontSize:14,fontWeight:600,color:T.text1}}>{l.name}</div><div style={{fontSize:12,color:T.text2,marginTop:2}}>{l.date} · {l.detail}</div></div>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <div style={{fontSize:15,fontWeight:800,color:T.orange,fontVariantNumeric:"tabular-nums",fontFamily:"'Barlow Condensed',sans-serif"}}>{fmt(l.duration)}</div>
-                  <div style={{fontSize:11,color:T.text3}}>›</div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </>}
+      {hyroxLogs.length>0&&(
+        <button onClick={()=>setShowSessions(true)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 18px",background:T.card,border:`1px solid ${T.border}`,borderRadius:18,cursor:"pointer",marginBottom:20,textAlign:"left"}}>
+          <div>
+            <div style={{fontSize:16,fontWeight:800,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.03em"}}>MY HYROX SESSIONS</div>
+            <div style={{fontSize:11,color:T.text2,marginTop:3}}>{hyroxLogs.length} race{hyroxLogs.length!==1?"s":""} completed</div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:13,fontWeight:700,color:T.purple,fontFamily:"'Barlow Condensed',sans-serif"}}>{hyroxLogs.length}</span>
+            <span style={{fontSize:18,color:T.purple}}>›</span>
+          </div>
+        </button>
+      )}
       <SL>COMPETITION DIVISIONS</SL>
       <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
         {Object.entries(HYROX_MODES).map(([name,m])=>(
@@ -1604,7 +1748,32 @@ function RunningTab({logs,addLog,deleteLog}){
 
   if(screen==="gps")return <GPSRunTracker onSave={r=>{addLog(r);setScreen("home");}} onClose={()=>setScreen("home")}/>;
   if(screen==="manual")return <ManualRunLogger onSave={r=>{addLog(r);setScreen("home");}} onClose={()=>setScreen("home")}/>;
-  if(detailRun)return <SessionDetail log={detailRun} onDelete={()=>{deleteLog(detailRun._id);setDetailRun(null);}} onClose={()=>setDetailRun(null)}/>;
+  if(detailRun)return <SessionDetail log={detailRun} onDelete={()=>{deleteLog(detailRun._id);setDetailRun(null);}} onClose={()=>setDetailRun(null)} onReattempt={()=>{setDetailRun(null);setScreen("gps");}}/>;
+  if(screen==="runs")return(
+    <div style={{padding:"20px 16px 100px",overflowY:"auto",minHeight:"100vh"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+        <button onClick={()=>setScreen("home")} style={sBtnStyle}>←</button>
+        <div><div style={{fontSize:26,fontWeight:900,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.02em"}}>MY RUNS</div><div style={{fontSize:12,color:T.text2,marginTop:2}}>{runLogs.length} run{runLogs.length!==1?"s":""} logged</div></div>
+      </div>
+      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,overflow:"hidden"}}>
+        {runLogs.length===0?(<div style={{padding:"32px 16px",textAlign:"center",fontSize:13,color:T.text3}}>No runs logged yet</div>):runLogs.map((l,i)=>{
+          const rt=RUN_TYPES.find(r=>r.label===l.name)||RUN_TYPES[0];
+          return(
+            <div key={i}>{i>0&&<Divider/>}
+              <button onClick={()=>setDetailRun(l)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
+                <div><div style={{fontSize:14,fontWeight:700,color:T.text1}}>{l.name}</div><div style={{fontSize:12,color:T.text2,marginTop:2}}>{l.date} · {l.detail}</div></div>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  {l.distKm&&<div style={{fontSize:12,fontWeight:700,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif"}}>{l.distKm}km</div>}
+                  <span style={{background:T.orangeL,color:T.orange,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,letterSpacing:"0.03em"}}>{l.zone||rt.zone}</span>
+                  <div style={{fontSize:11,color:T.text3}}>›</div>
+                </div>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   return(
     <div style={{padding:"20px 16px 100px",overflowY:"auto",minHeight:"100vh"}}>
@@ -1628,26 +1797,18 @@ function RunningTab({logs,addLog,deleteLog}){
           ))}
         </div>
       </div>
-      {runLogs.length>0&&<>
-        <SL>MY RUNS</SL>
-        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,overflow:"hidden",marginBottom:20}}>
-          {runLogs.map((l,i)=>{
-            const rt=RUN_TYPES.find(r=>r.label===l.name)||RUN_TYPES[0];
-            return(
-              <div key={i}>{i>0&&<Divider/>}
-                <div onClick={()=>setDetailRun(l)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 16px",cursor:"pointer"}}>
-                  <div><div style={{fontSize:14,fontWeight:600,color:T.text1}}>{l.name}</div><div style={{fontSize:12,color:T.text2,marginTop:2}}>{l.date} · {l.detail}</div></div>
-                  <div style={{display:"flex",alignItems:"center",gap:10}}>
-                    {l.distKm&&<div style={{fontSize:12,fontWeight:700,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif"}}>{l.distKm}km</div>}
-                    <span style={{background:T.orangeL,color:T.orange,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,letterSpacing:"0.03em"}}>{l.zone||rt.zone}</span>
-                    <div style={{fontSize:11,color:T.text3}}>›</div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </>}
+      {runLogs.length>0&&(
+        <button onClick={()=>setScreen("runs")} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 18px",background:T.card,border:`1px solid ${T.border}`,borderRadius:18,cursor:"pointer",marginBottom:20,textAlign:"left"}}>
+          <div>
+            <div style={{fontSize:16,fontWeight:800,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.03em"}}>MY RUNS</div>
+            <div style={{fontSize:11,color:T.text2,marginTop:3}}>{runLogs.length} run{runLogs.length!==1?"s":""} logged · {totalKm.toFixed(1)}km total</div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:13,fontWeight:700,color:T.orange,fontFamily:"'Barlow Condensed',sans-serif"}}>{runLogs.length}</span>
+            <span style={{fontSize:18,color:T.orange}}>›</span>
+          </div>
+        </button>
+      )}
       <div style={{display:"flex",gap:10,marginBottom:20}}>
         <Btn onClick={()=>setScreen("gps")} color={T.orange} style={{flex:1}}>GPS Run</Btn>
         <Btn onClick={()=>setScreen("manual")} color={T.surface} style={{flex:1,border:`1px solid ${T.border}`,color:T.text1}}>Log Manually</Btn>
@@ -1736,22 +1897,46 @@ function PRScreen({logs,onBack}){
 function TrainingTab({logs,addLog,deleteLog}){
   const [screen,setScreen]=useState("home");
   const [active,setActive]=useState(null);
-  const [customs,setCustoms]=useState([]);
+  const [customs,setCustoms]=useState(()=>{try{return JSON.parse(localStorage.getItem('forge_customs')||'[]');}catch{return[];}});
   const [extraLib,setExtraLib]=useState([]);
   const [catFilter,setCatFilter]=useState("ALL");
   const [selectedSession,setSelectedSession]=useState(null);
 
-  const saveCustom=w=>{setCustoms(p=>[w,...p]);setScreen("home");};
+  const saveCustom=w=>{const next=[w,...customs];setCustoms(next);localStorage.setItem('forge_customs',JSON.stringify(next));setScreen("home");};
+  const deleteCustom=id=>{const next=customs.filter(c=>c.id!==id);setCustoms(next);localStorage.setItem('forge_customs',JSON.stringify(next));};
   const startWorkout=t=>{setActive({...t,exercises:t.exercises.map(e=>({...e}))});setScreen("active");};
   const complete=result=>{addLog({type:result.tag==="CUSTOM"?"CUSTOM":result.tag==="CARDIO"?"CARDIO":"STRENGTH",name:result.name,duration:result.duration,date:today(),detail:`${result.doneSets||0}/${result.totalSets||0} sets`,exercises:result.exercises});setScreen("home");};
 
-  if(selectedSession)return <SessionDetail log={selectedSession} onDelete={()=>{deleteLog(selectedSession._id);setSelectedSession(null);}} onClose={()=>setSelectedSession(null)}/>;
+  const reattemptWorkout=log=>{const t={id:`reattempt-${log._id}`,name:log.name,tag:log.type,_originalLog:log,exercises:(log.exercises||[]).map(ex=>({...ex,weight:ex.setLogs?.slice(-1)[0]?.weight||ex.weight||"",reps:ex.setLogs?.slice(-1)[0]?.reps||ex.reps||0}))};setActive(t);setSelectedSession(null);setScreen("active");};
+  if(selectedSession)return <SessionDetail log={selectedSession} onDelete={()=>{deleteLog(selectedSession._id);setSelectedSession(null);}} onClose={()=>setSelectedSession(null)} onReattempt={reattemptWorkout}/>;
   if(screen==="active"&&active)return <ActiveWorkout workout={active} history={logs} onDone={complete} onBack={()=>setScreen("home")}/>;
   if(screen==="builder")return <WorkoutBuilder extraLibrary={extraLib} onSave={saveCustom} onClose={()=>setScreen("home")}/>;
   if(screen==="prs")return <PRScreen logs={logs} onBack={()=>setScreen("home")}/>;
 
-  const sLogs=logs.filter(l=>["STRENGTH","CUSTOM","HYROX","CARDIO"].includes(l.type));
-  const allTemplates=[...customs,...WORKOUT_TEMPLATES];
+  const sLogs=logs.filter(l=>["STRENGTH","CUSTOM","CARDIO"].includes(l.type));
+  if(screen==="sessions")return(
+    <div style={{padding:"20px 16px 100px",overflowY:"auto",minHeight:"100vh"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+        <button onClick={()=>setScreen("home")} style={sBtnStyle}>←</button>
+        <div><div style={{fontSize:26,fontWeight:900,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.02em"}}>MY SESSIONS</div><div style={{fontSize:12,color:T.text2,marginTop:2}}>{sLogs.length} workout{sLogs.length!==1?"s":""} logged</div></div>
+      </div>
+      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,overflow:"hidden"}}>
+        {sLogs.length===0?(<div style={{padding:"32px 16px",textAlign:"center",fontSize:13,color:T.text3}}>No sessions yet</div>):sLogs.map((l,i)=>(
+          <div key={l._id||i}>{i>0&&<Divider/>}
+            <button onClick={()=>setSelectedSession(l)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
+              <div><div style={{fontSize:14,fontWeight:700,color:T.text1}}>{l.name}</div><div style={{fontSize:11,color:T.text2,marginTop:2}}>{l.date} · {l.detail}</div></div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <Pill label={l.type} type={l.type}/>
+                <div style={{fontSize:12,fontWeight:600,color:T.text2,fontFamily:"'Barlow Condensed',sans-serif"}}>{fmt(l.duration||0)}</div>
+                <span style={{fontSize:14,color:T.text3}}>›</span>
+              </div>
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+  const allTemplates=[...WORKOUT_TEMPLATES];
   const cats=["ALL","UPPER","LOWER","CORE","CARDIO","HYBRID","HYROX"];
   const filtered=catFilter==="ALL"?allTemplates:allTemplates.filter(t=>t.category===catFilter||(catFilter==="UPPER"&&!t.category&&t.tag==="STRENGTH"));
 
@@ -1789,24 +1974,37 @@ function TrainingTab({logs,addLog,deleteLog}){
       </div>
 
       {sLogs.length>0&&(
-        <>
-          <SL>MY SESSIONS</SL>
-          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:18,overflow:"hidden",marginBottom:20}}>
-            {sLogs.slice(0,6).map((l,i)=>(
-              <div key={l._id||i}>{i>0&&<Divider/>}
-                <button onClick={()=>setSelectedSession(l)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 16px",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
-                  <div><div style={{fontSize:14,fontWeight:700,color:T.text1}}>{l.name}</div><div style={{fontSize:11,color:T.text2,marginTop:2}}>{l.date} · {l.detail}</div></div>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <div style={{fontSize:12,fontWeight:600,color:T.text2,fontFamily:"'Barlow Condensed',sans-serif"}}>{fmt(l.duration||0)}</div>
-                    <span style={{fontSize:14,color:T.text3}}>›</span>
-                  </div>
-                </button>
-              </div>
-            ))}
+        <button onClick={()=>setScreen("sessions")} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 18px",background:T.card,border:`1px solid ${T.border}`,borderRadius:18,cursor:"pointer",marginBottom:20,textAlign:"left"}}>
+          <div>
+            <div style={{fontSize:16,fontWeight:800,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.03em"}}>MY SESSIONS</div>
+            <div style={{fontSize:11,color:T.text2,marginTop:3}}>{sLogs.length} session{sLogs.length!==1?"s":""} logged</div>
           </div>
-        </>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:13,fontWeight:700,color:T.orange,fontFamily:"'Barlow Condensed',sans-serif"}}>{sLogs.length}</span>
+            <span style={{fontSize:18,color:T.orange}}>›</span>
+          </div>
+        </button>
       )}
 
+      {/* My Created Workouts */}
+      {customs.length>0&&(
+        <div style={{marginBottom:20}}>
+          <div style={{fontSize:11,fontWeight:800,color:T.text2,letterSpacing:"0.1em",marginBottom:10}}>MY CREATED WORKOUTS</div>
+          {customs.map(t=>(
+            <div key={t.id} style={{background:T.card,border:`1.5px solid ${T.orange}44`,borderRadius:20,padding:"16px 18px",marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <Pill label={t.tag} type={t.tag}/>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:11,color:T.text2}}>{t.exercises.length} exercises</span>
+                  <button onClick={()=>deleteCustom(t.id)} style={{...sBtnStyle,background:T.redL,color:T.red,width:22,height:22,fontSize:10}}>🗑</button>
+                </div>
+              </div>
+              <div style={{fontSize:18,fontWeight:800,color:T.text1,marginBottom:10,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.02em"}}>{t.name}</div>
+              <Btn onClick={()=>startWorkout(t)} color={T.orange} style={{fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.05em"}}>START WORKOUT</Btn>
+            </div>
+          ))}
+        </div>
+      )}
       {/* Category filter chips */}
       <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:4,marginBottom:16}}>
         {cats.map(c=>(
@@ -1827,7 +2025,7 @@ function TrainingTab({logs,addLog,deleteLog}){
               <Pill label={t.tag} type={t.tag}/>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <span style={{fontSize:11,color:T.text2}}>{t.exercises.length} exercises</span>
-                {t.id.startsWith("custom")&&<button onClick={()=>deleteLog(t.id)} style={{...sBtnStyle,background:T.redL,color:T.red,width:22,height:22,fontSize:10}}>🗑</button>}
+                {t.id.startsWith("custom")&&<button onClick={()=>deleteCustom(t.id)} style={{...sBtnStyle,background:T.redL,color:T.red,width:22,height:22,fontSize:10}}>🗑</button>}
               </div>
             </div>
             <div style={{fontSize:18,fontWeight:800,color:T.text1,marginBottom:8,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.02em"}}>{t.name}</div>
@@ -1871,7 +2069,7 @@ function DeleteConfirmModal({onConfirm,onCancel}){
 }
 
 // ─── SESSION DETAIL ──────────────────────────────────────────────────────────
-function SessionDetail({log,onClose,onDelete}){
+function SessionDetail({log,onClose,onDelete,onReattempt}){
   const [showDel,setShowDel]=useState(false);
   const typeColor={HYROX:T.purple,STRENGTH:T.orange,CUSTOM:T.blue,RUN:T.green,CARDIO:T.red};
   const tc=typeColor[log.type]||T.orange;
@@ -1933,7 +2131,7 @@ function SessionDetail({log,onClose,onDelete}){
                       <div style={{flex:1,display:"flex",gap:8,alignItems:"center"}}>
                         <span style={{fontSize:16,fontWeight:800,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",minWidth:52}}>{s.reps} reps</span>
                         <span style={{fontSize:10,color:T.text3}}>·</span>
-                        <span style={{fontSize:16,fontWeight:800,color:T.orange,fontFamily:"'Barlow Condensed',sans-serif"}}>{s.weight&&s.weight!=="BW"?`${s.weight} kg`:"Bodyweight"}</span>
+                        <span style={{fontSize:16,fontWeight:800,color:T.orange,fontFamily:"'Barlow Condensed',sans-serif"}}>{s.weight&&s.weight!=="BW"?`${String(s.weight).replace(/\s*kg$/i,'')} kg`:"Bodyweight"}</span>
                       </div>
                       {s.duration>0&&<span style={{fontSize:10,color:T.text3,flexShrink:0}}>{fmtMs(s.duration)}</span>}
                     </div>
@@ -1949,16 +2147,44 @@ function SessionDetail({log,onClose,onDelete}){
 
       {/* Hyrox station logs */}
       {log.stationLogs&&log.stationLogs.length>0&&(
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {log.stationLogs.map((st,i)=>(
-            <div key={i} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"13px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div>
-                <div style={{fontSize:13,fontWeight:700,color:T.text1}}>{st.name}</div>
-                {st.weight&&<div style={{fontSize:11,color:T.text2,marginTop:2}}>{st.weight}kg</div>}
-              </div>
-              {st.split&&<div style={{fontSize:16,fontWeight:800,color:T.orange,fontFamily:"'Barlow Condensed',sans-serif"}}>{st.split}</div>}
-            </div>
-          ))}
+        <div style={{marginBottom:8}}>
+          <div style={{fontSize:11,fontWeight:800,color:T.text2,letterSpacing:"0.08em",marginBottom:10}}>RACE SPLITS</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {log.stationLogs.map((st,i)=>{
+              const isRun=st.phase==="run";
+              const splitSecs=typeof st.split==="number"?st.split:parseInt(st.split)||0;
+              return(
+                <div key={i} style={{background:T.card,border:`1px solid ${isRun?T.orange+"33":T.border}`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{width:36,height:36,borderRadius:10,background:isRun?T.orangeL:T.surface,border:`1px solid ${isRun?T.orange+"55":T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:isRun?T.orange:T.text2,flexShrink:0,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.04em"}}>
+                    {isRun?`R${st.runNum||""}`:st.name?.slice(0,2).toUpperCase()}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:14,fontWeight:700,color:T.text1}}>{isRun?`Run ${st.runNum||""} · 1 km`:st.name}</div>
+                    {!isRun&&st.weight&&st.weight!=="—"&&<div style={{fontSize:11,color:T.text2,marginTop:2}}>{st.weight}</div>}
+                  </div>
+                  <div style={{textAlign:"right",flexShrink:0}}>
+                    <div style={{fontSize:20,fontWeight:900,color:isRun?T.orange:T.text1,fontFamily:"'Barlow Condensed',sans-serif",fontVariantNumeric:"tabular-nums"}}>{splitSecs>0?fmt(splitSecs):"—"}</div>
+                    <div style={{fontSize:9,color:T.text3,letterSpacing:"0.06em",marginTop:1}}>{isRun?"RUN":"STATION"}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Reattempt actions */}
+      {onReattempt&&(
+        <div style={{marginTop:24}}>
+          {(log.type==="STRENGTH"||log.type==="CUSTOM"||log.type==="CARDIO")&&log.exercises?.length>0&&(
+            <Btn onClick={()=>onReattempt(log)} color={T.orange} style={{fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.05em",marginBottom:10}}>↺ REATTEMPT WORKOUT</Btn>
+          )}
+          {log.type==="HYROX"&&(
+            <Btn onClick={()=>onReattempt(log)} color={T.purple} style={{fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.05em",marginBottom:10}}>↺ RACE AGAIN</Btn>
+          )}
+          {log.type==="RUN"&&(
+            <Btn onClick={()=>onReattempt(log)} color={T.green} style={{fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.05em",marginBottom:10}}>↺ RUN AGAIN</Btn>
+          )}
         </div>
       )}
     </div>
