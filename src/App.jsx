@@ -1354,40 +1354,34 @@ function HyroxTab({logs,addLog,deleteLog,onWorkoutLive}){
 
     return(
       <>
-      <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",padding:"12px 16px 0"}}>
-        <button onClick={()=>setShowSimExit(true)} style={{...sBtnStyle,alignSelf:"flex-start",marginBottom:8}}>←</button>
+      <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
 
-        {/* Phase label */}
-        <div style={{textAlign:"center",marginBottom:2}}>
-          <span style={{fontSize:11,fontWeight:700,color:T.text2,letterSpacing:"0.1em"}}>
-            {isRox?"ROX ZONE":isRun?`RUN ${station+1} OF 8`:`${stName(st)} · STATION ${station+1}`}
-          </span>
+        {/* Phase header strip */}
+        <div style={{background:`${phaseCol}18`,borderBottom:`2px solid ${phaseCol}`,padding:"10px 16px",display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={()=>setShowSimExit(true)} style={{...sBtnStyle,flexShrink:0}}>←</button>
+          <div style={{flex:1,textAlign:"center"}}>
+            <div style={{fontSize:13,fontWeight:900,color:phaseCol,letterSpacing:"0.12em",fontFamily:"'Barlow Condensed',sans-serif"}}>
+              {isRox?"ROX ZONE":isRun?`RUN ${station+1} OF 8`:`STATION ${station+1} · ${stName(st)}`}
+            </div>
+            {!isRox&&!isRun&&w&&w!=="—"&&<div style={{fontSize:11,color:T.text2,marginTop:1}}>{w}</div>}
+          </div>
+          <div style={{width:32,flexShrink:0}}/>
         </div>
 
-        {/* Timers row — total + split side by side */}
-        <div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:16,marginBottom:6}}>
-          <div style={{textAlign:"center"}}>
-            <div className="timer-glow" style={{fontSize:64,fontWeight:900,color:T.text1,fontVariantNumeric:"tabular-nums",lineHeight:1,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"-0.02em"}}>{fmt(elapsed)}</div>
-            <div style={{fontSize:9,fontWeight:700,color:T.text3,letterSpacing:"0.08em",marginTop:1}}>TOTAL</div>
-          </div>
-          <div style={{width:1,height:40,background:T.border,marginBottom:14}}/>
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:48,fontWeight:900,color:phaseCol,fontVariantNumeric:"tabular-nums",lineHeight:1,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"-0.02em"}}>{fmt(splitElapsed)}</div>
-            <div style={{fontSize:9,fontWeight:700,color:phaseCol,letterSpacing:"0.08em",marginTop:1,opacity:0.7}}>SPLIT</div>
+        {/* Main timer */}
+        <div style={{textAlign:"center",padding:"18px 16px 4px"}}>
+          <div className="timer-glow" style={{fontSize:86,fontWeight:900,color:T.text1,fontVariantNumeric:"tabular-nums",lineHeight:1,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"-0.02em"}}>{fmt(elapsed)}</div>
+          <div style={{fontSize:10,fontWeight:700,color:T.text3,letterSpacing:"0.1em",marginTop:2}}>TOTAL TIME</div>
+          {/* Split badge */}
+          <div style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,background:`${phaseCol}20`,border:`1px solid ${phaseCol}55`,borderRadius:50,padding:"4px 14px"}}>
+            <span style={{fontSize:10,fontWeight:700,color:phaseCol,letterSpacing:"0.08em"}}>SPLIT</span>
+            <span style={{fontSize:20,fontWeight:900,color:phaseCol,fontVariantNumeric:"tabular-nums",fontFamily:"'Barlow Condensed',sans-serif"}}>{fmt(splitElapsed)}</span>
           </div>
         </div>
-
-        {/* Current station detail (weight/reps) */}
-        {!isRox&&!isRun&&w&&w!=="—"&&(
-          <div style={{textAlign:"center",marginBottom:6}}>
-            <span style={{fontSize:12,fontWeight:700,color:T.text2,background:T.surface,borderRadius:50,padding:"3px 12px",border:`1px solid ${T.borderM}`}}>{w}</span>
-          </div>
-        )}
 
         {/* Compact 8-row table */}
-        <div style={{background:T.card,border:`1px solid ${T.borderM}`,borderRadius:14,overflow:"hidden",marginBottom:10}}>
-          {/* Header */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 52px 42px 52px",padding:"6px 10px",background:T.surface,borderBottom:`1px solid ${T.border}`}}>
+        <div style={{margin:"10px 16px 0",background:T.card,border:`1px solid ${T.borderM}`,borderRadius:14,overflow:"hidden"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 52px 42px 52px",padding:"5px 10px",background:T.surface,borderBottom:`1px solid ${T.border}`}}>
             <span style={{fontSize:9,fontWeight:800,color:T.text3,letterSpacing:"0.06em"}}>STATION</span>
             <span style={{fontSize:9,fontWeight:800,color:T.orange,letterSpacing:"0.06em",textAlign:"right"}}>RUN</span>
             <span style={{fontSize:9,fontWeight:800,color:T.blue,letterSpacing:"0.06em",textAlign:"right"}}>ROX</span>
@@ -1397,7 +1391,7 @@ function HyroxTab({logs,addLog,deleteLog,onWorkoutLive}){
             const isActive=i===station;
             const isDone=r.stn!==null;
             return(
-              <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 52px 42px 52px",padding:"6px 10px",borderBottom:i<7?`1px solid ${T.border}`:"none",background:isActive?`${phaseCol}11`:"transparent",opacity:isDone||isActive||i<station?1:0.3}}>
+              <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 52px 42px 52px",padding:"6px 10px",borderBottom:i<7?`1px solid ${T.border}`:"none",background:isActive?`${phaseCol}18`:"transparent",opacity:isDone||isActive||i<station?1:0.25}}>
                 <span style={{fontSize:12,fontWeight:isActive?800:600,color:isActive?phaseCol:isDone?T.text1:T.text3,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.02em",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.name}</span>
                 <span style={{fontSize:12,fontWeight:700,color:r.run?T.orange:T.text3,fontVariantNumeric:"tabular-nums",fontFamily:"'Barlow Condensed',sans-serif",textAlign:"right"}}>{r.run?fmt(r.run.split):"—"}</span>
                 <span style={{fontSize:12,fontWeight:700,color:r.rox1?T.blue:T.text3,fontVariantNumeric:"tabular-nums",fontFamily:"'Barlow Condensed',sans-serif",textAlign:"right"}}>{r.rox1?fmt(r.rox1.split):"—"}</span>
@@ -1407,8 +1401,8 @@ function HyroxTab({logs,addLog,deleteLog,onWorkoutLive}){
           })}
         </div>
 
-        <div style={{paddingBottom:24,paddingTop:6,display:"flex",flexDirection:"column",gap:8}}>
-          <Btn onClick={next} disabled={simPaused} color={simPaused?T.text3:phaseCol} style={{fontSize:14,padding:14,letterSpacing:"0.05em",fontFamily:"'Barlow Condensed',sans-serif"}}>
+        <div style={{padding:"10px 16px 28px",display:"flex",flexDirection:"column",gap:8}}>
+          <Btn onClick={next} disabled={simPaused} color={simPaused?T.text3:phaseCol} style={{fontSize:15,padding:16,letterSpacing:"0.06em",fontFamily:"'Barlow Condensed',sans-serif"}}>
             {btnLabel}
           </Btn>
           <div style={{display:"flex",gap:10}}>
