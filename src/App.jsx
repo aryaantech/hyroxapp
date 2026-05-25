@@ -1209,11 +1209,15 @@ function HyroxSimDetail({sim,onDelete,onClose}){
 function HyroxTab({logs,addLog,deleteLog,onWorkoutLive}){
   const [mode,setMode]=useState(null);
   const [simActive,setSimActive]=useState(false);
-  useEffect(()=>{onWorkoutLive?.(simActive);},[simActive]);
+  const [raceComplete,setRaceComplete]=useState(false);
+  const [finalRaceLogs,setFinalRaceLogs]=useState([]);
+  const [finalElapsed,setFinalElapsed]=useState(0);
+  useEffect(()=>{onWorkoutLive?.(simActive||raceComplete);},[simActive,raceComplete]);
   const [simPaused,setSimPaused]=useState(false);
   const [showSimExit,setShowSimExit]=useState(false);
   const [station,setStation]=useState(0);
-  const [phase,setPhase]=useState("run");
+  const [phase,setPhase]=useState("run"); // "run" | "rox" | "station"
+  const [roxNext,setRoxNext]=useState("station"); // what comes after rox zone
   const [elapsed,setElapsed]=useState(0);
   const [stationLogs,setStationLogs]=useState([]);
   const [lastSplit,setLastSplit]=useState(0);
@@ -1225,20 +1229,32 @@ function HyroxTab({logs,addLog,deleteLog,onWorkoutLive}){
 
   useEffect(()=>{if(simActive&&!simPaused)timerRef.current=setInterval(()=>setElapsed(s=>s+1),1000);else clearInterval(timerRef.current);return()=>clearInterval(timerRef.current);},[simActive,simPaused]);
 
-  const startSim=()=>{setSimActive(true);setStation(0);setPhase("run");setElapsed(0);setStationLogs([]);setLastSplit(0);};
+  const startSim=()=>{setSimActive(true);setStation(0);setPhase("run");setRoxNext("station");setElapsed(0);setStationLogs([]);setLastSplit(0);setRaceComplete(false);};
   const next=()=>{
     const split=elapsed-lastSplit;
-    const stations=mode&&mode!=="Custom"?HYROX_MODES[mode]:null;
+    const modeData=mode&&mode!=="Custom"?HYROX_MODES[mode]:null;
     const curStation=HYROX_BASE_STATIONS[station];
-    const entry=phase==="run"?{phase:"run",runNum:station+1,split}:{phase:"station",name:curStation.name,weight:stations?HYROX_MODES[mode].weights[station]:"—",split};
-    setStationLogs(p=>[...p,entry]);setLastSplit(elapsed);
-    if(phase==="run"){setPhase("station");}
-    else if(station<7){setStation(s=>s+1);setPhase("run");}
-    else{
-      setSimActive(false);
-      const finalLogs=[...stationLogs,entry];
-      addLog({type:"HYROX",name:`${mode} Simulation`,duration:elapsed,date:today(),detail:"8 stations completed",mode,stationLogs:finalLogs});
-      setStation(0);setPhase("run");
+    if(phase==="run"){
+      const entry={phase:"run",runNum:station+1,split};
+      setStationLogs(p=>[...p,entry]);setLastSplit(elapsed);
+      setPhase("rox");setRoxNext("station");
+    }else if(phase==="rox"){
+      const entry={phase:"rox",split,from:roxNext==="station"?"run":"station"};
+      setStationLogs(p=>[...p,entry]);setLastSplit(elapsed);
+      if(roxNext==="station"){setPhase("station");}
+      else{setStation(s=>s+1);setPhase("run");}
+    }else{
+      const entry={phase:"station",name:curStation.name,weight:modeData?modeData.weights[station]:"—",split};
+      const newLogs=[...stationLogs,entry];
+      setStationLogs(newLogs);setLastSplit(elapsed);
+      if(station<7){setPhase("rox");setRoxNext("run");}
+      else{
+        setSimActive(false);
+        setFinalRaceLogs(newLogs);
+        setFinalElapsed(elapsed);
+        setRaceComplete(true);
+        setStation(0);setPhase("run");
+      }
     }
   };
 
@@ -1271,46 +1287,109 @@ function HyroxTab({logs,addLog,deleteLog,onWorkoutLive}){
     </div>
   );
 
+  if(raceComplete){
+    const runTime=finalRaceLogs.filter(l=>l.phase==="run").reduce((a,l)=>a+(l.split||0),0);
+    const stationTime=finalRaceLogs.filter(l=>l.phase==="station").reduce((a,l)=>a+(l.split||0),0);
+    const roxTime=finalRaceLogs.filter(l=>l.phase==="rox").reduce((a,l)=>a+(l.split||0),0);
+    const phaseColor={run:T.orange,station:T.purple,rox:T.blue};
+    const phaseLabel=l=>l.phase==="run"?`Run ${l.runNum}`:l.phase==="rox"?`Rox Zone`:l.name;
+    return(
+      <div style={{padding:"20px 16px 100px",overflowY:"auto",minHeight:"100vh"}}>
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <div style={{fontSize:44,marginBottom:8}}>🏁</div>
+          <div style={{fontSize:30,fontWeight:900,color:T.text1,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.02em",marginBottom:4}}>RACE COMPLETE</div>
+          <div style={{fontSize:28,fontWeight:900,color:T.orange,fontFamily:"'Barlow Condensed',sans-serif",fontVariantNumeric:"tabular-nums"}}>{fmt(finalElapsed)}</div>
+          <div style={{fontSize:12,color:T.text2,marginTop:2}}>total time · {mode}</div>
+        </div>
+        {/* Three cumulative totals */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:20}}>
+          {[{label:"RUNS",val:runTime,color:T.orange,bg:T.orangeL},{label:"STATIONS",val:stationTime,color:T.purple,bg:T.purpleL},{label:"ROX ZONES",val:roxTime,color:T.blue,bg:T.blueL||"rgba(59,130,246,0.12)"}].map(m=>(
+            <div key={m.label} style={{background:m.bg,border:`1px solid ${m.color}33`,borderRadius:14,padding:"12px 10px",textAlign:"center"}}>
+              <div style={{fontSize:18,fontWeight:900,color:m.color,fontFamily:"'Barlow Condensed',sans-serif",fontVariantNumeric:"tabular-nums"}}>{fmt(m.val)}</div>
+              <div style={{fontSize:9,fontWeight:800,color:m.color,letterSpacing:"0.08em",marginTop:3,opacity:0.8}}>{m.label}</div>
+            </div>
+          ))}
+        </div>
+        {/* Full split breakdown */}
+        <div style={{fontSize:11,fontWeight:800,color:T.text2,letterSpacing:"0.08em",marginBottom:10}}>SPLIT BREAKDOWN</div>
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,overflow:"hidden",marginBottom:20}}>
+          {finalRaceLogs.map((l,i)=>{
+            const col=phaseColor[l.phase]||T.text2;
+            return(
+              <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",borderBottom:i<finalRaceLogs.length-1?`1px solid ${T.border}`:"none",background:l.phase==="rox"?"transparent":l.phase==="run"?`${T.orange}08`:`${T.purple}08`}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{width:8,height:8,borderRadius:"50%",background:col,flexShrink:0}}/>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700,color:T.text1}}>{phaseLabel(l)}</div>
+                    {l.phase==="station"&&l.weight&&l.weight!=="—"&&<div style={{fontSize:11,color:T.text3,marginTop:1}}>{l.weight}</div>}
+                  </div>
+                </div>
+                <div style={{fontSize:18,fontWeight:900,color:col,fontFamily:"'Barlow Condensed',sans-serif",fontVariantNumeric:"tabular-nums"}}>{fmt(l.split||0)}</div>
+              </div>
+            );
+          })}
+        </div>
+        <Btn onClick={()=>{addLog({type:"HYROX",name:`${mode} Simulation`,duration:finalElapsed,date:today(),detail:"8 stations completed",mode,stationLogs:finalRaceLogs});setRaceComplete(false);setMode(null);}} color={T.orange}>SAVE RACE</Btn>
+      </div>
+    );
+  }
+
   if(simActive&&mode){
-    const st=HYROX_BASE_STATIONS[station];const isRun=phase==="run";
+    const st=HYROX_BASE_STATIONS[station];
+    const isRun=phase==="run";const isRox=phase==="rox";
     const w=mode!=="Custom"?HYROX_MODES[mode].weights[station]:"—";
     const splitElapsed=elapsed-lastSplit;
+    const phaseCol=isRun?T.orange:isRox?T.blue:T.purple;
     return(
       <>
       <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",padding:"16px 20px 0"}}>
         <button onClick={()=>setShowSimExit(true)} style={{...sBtnStyle,alignSelf:"flex-start",marginBottom:16}}>←</button>
         <div style={{textAlign:"center",marginBottom:4}}>
-          <span style={{fontSize:11,fontWeight:700,color:T.text2,letterSpacing:"0.1em"}}>{isRun?`RUN ${station+1} OF 8`:`STATION ${station+1} OF 8`}</span>
+          <span style={{fontSize:11,fontWeight:700,color:T.text2,letterSpacing:"0.1em"}}>
+            {isRox?"ROX ZONE":isRun?`RUN ${station+1} OF 8`:`STATION ${station+1} OF 8`}
+          </span>
         </div>
         <div style={{textAlign:"center",marginBottom:6}}>
           <div className="timer-glow" style={{fontSize:80,fontWeight:900,color:T.text1,fontVariantNumeric:"tabular-nums",lineHeight:1,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"-0.02em"}}>{fmt(elapsed)}</div>
           <div style={{fontSize:12,color:T.text2,marginTop:2}}>total time</div>
         </div>
         <div style={{background:T.card,border:`1px solid ${T.borderM}`,borderRadius:16,padding:"18px 20px",marginBottom:12,textAlign:"center",flex:1,display:"flex",flexDirection:"column",justifyContent:"center"}}>
-          <div style={{fontSize:11,fontWeight:700,color:T.orange,letterSpacing:"0.08em",marginBottom:6}}>{isRun?"RUNNING":"STATION"}</div>
-          <div style={{fontSize:30,fontWeight:900,color:T.text1,marginBottom:4,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.01em"}}>{isRun?"1 KM":st.name.toUpperCase()}</div>
-          {!isRun&&<div style={{fontSize:14,color:T.text2,marginBottom:4}}>{st.detail}{w!=="—"?` · ${w}`:""}</div>}
-          <div style={{fontSize:12,color:T.text3,lineHeight:1.5,marginBottom:14}}>{isRun?"Settle into race pace":st.tip}</div>
-          <div style={{background:T.surface,borderRadius:10,padding:"10px 16px",display:"inline-flex",gap:10,alignItems:"center",alignSelf:"center"}}>
-            <div style={{fontSize:11,color:T.text2}}>split</div>
-            <div style={{fontSize:20,fontWeight:900,color:T.orange,fontVariantNumeric:"tabular-nums",fontFamily:"'Barlow Condensed',sans-serif"}}>{fmt(splitElapsed)}</div>
+          <div style={{fontSize:11,fontWeight:700,color:phaseCol,letterSpacing:"0.08em",marginBottom:6}}>
+            {isRox?"TRANSITION":isRun?"RUNNING":"STATION"}
+          </div>
+          <div style={{fontSize:30,fontWeight:900,color:T.text1,marginBottom:4,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.01em"}}>
+            {isRox?(roxNext==="station"?"→ "+HYROX_BASE_STATIONS[station].name.toUpperCase():"→ RUN "+(station+2)):isRun?"1 KM":st.name.toUpperCase()}
+          </div>
+          {!isRun&&!isRox&&<div style={{fontSize:14,color:T.text2,marginBottom:4}}>{st.detail}{w!=="—"?` · ${w}`:""}</div>}
+          <div style={{fontSize:12,color:T.text3,lineHeight:1.5,marginBottom:14}}>
+            {isRox?"Move to next position, catch your breath":isRun?"Settle into race pace":st.tip}
+          </div>
+          <div style={{background:T.surface,borderRadius:10,padding:"12px 20px",display:"inline-flex",gap:12,alignItems:"center",alignSelf:"center"}}>
+            <div style={{fontSize:12,color:T.text2,fontWeight:600}}>split</div>
+            <div style={{fontSize:28,fontWeight:900,color:phaseCol,fontVariantNumeric:"tabular-nums",fontFamily:"'Barlow Condensed',sans-serif"}}>{fmt(splitElapsed)}</div>
           </div>
           <div style={{display:"flex",gap:5,justifyContent:"center",marginTop:16}}>
             {stations.map((_,i)=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:i<station?T.orange:i===station?T.text1:T.border,transition:"all 0.3s"}}/>)}
           </div>
           {stationLogs.length>0&&(
-            <div style={{marginTop:14,display:"flex",gap:5,justifyContent:"center",flexWrap:"wrap"}}>
-              {stationLogs.slice(-6).map((l,i)=>(
-                <div key={i} style={{background:T.surface,borderRadius:20,padding:"4px 10px",display:"flex",gap:5,alignItems:"center"}}>
-                  <span style={{fontSize:9,color:T.text3,fontFamily:"'Barlow Condensed',sans-serif"}}>{l.phase==="run"?`R${l.runNum||i+1}`:l.name?.split(" ")[0]}</span>
-                  <span style={{fontSize:10,fontWeight:700,color:T.text2,fontVariantNumeric:"tabular-nums"}}>{fmt(l.split||0)}</span>
-                </div>
-              ))}
+            <div style={{marginTop:14,display:"flex",flexDirection:"column",gap:5}}>
+              {stationLogs.slice(-5).map((l,i)=>{
+                const col=l.phase==="run"?T.orange:l.phase==="rox"?T.blue:T.purple;
+                const label=l.phase==="run"?`Run ${l.runNum}`:l.phase==="rox"?"Rox Zone":l.name?.split(" ").slice(0,2).join(" ");
+                return(
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",borderRadius:10,background:l.phase==="run"?T.orangeL:l.phase==="rox"?T.surface:T.purpleL,border:`1px solid ${col}33`}}>
+                    <span style={{fontSize:13,fontWeight:700,color:col,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:"0.03em"}}>{label}</span>
+                    <span style={{fontSize:16,fontWeight:900,color:T.text1,fontVariantNumeric:"tabular-nums",fontFamily:"'Barlow Condensed',sans-serif"}}>{fmt(l.split||0)}</span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
         <div style={{paddingBottom:90,paddingTop:10,display:"flex",flexDirection:"column",gap:10}}>
-          <Btn onClick={next} disabled={simPaused} color={simPaused?T.text3:T.orange} style={{fontSize:15,padding:15,letterSpacing:"0.06em",fontFamily:"'Barlow Condensed',sans-serif"}}>{simPaused?"⏸ PAUSED":isRun?"RUN DONE →":station<7?"STATION DONE →":"FINISH RACE"}</Btn>
+          <Btn onClick={next} disabled={simPaused} color={simPaused?T.text3:phaseCol} style={{fontSize:15,padding:15,letterSpacing:"0.06em",fontFamily:"'Barlow Condensed',sans-serif"}}>
+            {simPaused?"⏸ PAUSED":isRox?"READY →":isRun?"RUN DONE →":station<7?"STATION DONE →":"FINISH RACE"}
+          </Btn>
           <div style={{display:"flex",gap:10}}>
             <button onClick={()=>setSimPaused(p=>!p)} style={{flex:1,padding:"13px",background:simPaused?T.orangeL:T.card,border:`1px solid ${simPaused?T.orange:T.borderM}`,borderRadius:50,color:simPaused?T.orange:T.text2,fontSize:13,fontWeight:800,cursor:"pointer",letterSpacing:"0.05em",fontFamily:"'Barlow Condensed',sans-serif"}}>{simPaused?"▶ RESUME":"⏸ PAUSE"}</button>
             <GhostBtn onClick={()=>setShowSimExit(true)} style={{flex:1}}>Quit</GhostBtn>
@@ -1319,8 +1398,7 @@ function HyroxTab({logs,addLog,deleteLog,onWorkoutLive}){
       </div>
       {showSimExit&&<ExitConfirmModal
         onSave={()=>{
-          const finalLogs=[...stationLogs];
-          addLog({type:"HYROX",name:`${mode} Simulation`,duration:elapsed,date:today(),detail:`${stationLogs.length} splits logged`,mode,stationLogs:finalLogs});
+          addLog({type:"HYROX",name:`${mode} Simulation`,duration:elapsed,date:today(),detail:`${stationLogs.length} splits logged`,mode,stationLogs:[...stationLogs]});
           setSimActive(false);setShowSimExit(false);setStation(0);setPhase("run");
         }}
         onDiscard={()=>{setSimActive(false);setShowSimExit(false);setStation(0);setPhase("run");}}
