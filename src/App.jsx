@@ -1992,9 +1992,10 @@ function PRScreen({logs,onBack}){
   );
 }
 
-function TrainingTab({logs,addLog,deleteLog}){
+function TrainingTab({logs,addLog,deleteLog,onWorkoutLive}){
   const [screen,setScreen]=useState("home");
   const [active,setActive]=useState(null);
+  useEffect(()=>{onWorkoutLive?.(screen==="active");},[screen]);
   const [customs,setCustoms]=useState(()=>{try{return JSON.parse(localStorage.getItem('forge_customs')||'[]');}catch{return[];}});
   const [extraLib,setExtraLib]=useState([]);
   const [catFilter,setCatFilter]=useState("ALL");
@@ -2839,6 +2840,7 @@ function AccountTab({user,profile,onProfileUpdate}){
 // ─── ROOT ────────────────────────────────────────────────────────────────────
 function MainApp({ user }) {
   const [tab,setTab]=useState(()=>localStorage.getItem("forge_tab")||"home");
+  const [workoutLive,setWorkoutLive]=useState(false);
   useEffect(()=>{localStorage.setItem("forge_tab",tab);},[tab]);
   const [logs,setLogs]=useState(()=>{
     try{const s=localStorage.getItem("forge_logs");return s?JSON.parse(s):[];}catch{return[];}
@@ -2895,10 +2897,10 @@ function MainApp({ user }) {
     <div style={{maxWidth:430,margin:"0 auto",minHeight:"100vh",background:T.bg,fontFamily:"'Barlow', sans-serif",color:T.text1}}>
       {tab==="home"    &&<HomeTab     logs={logs} setTab={setTab} profile={profile} user={user} deleteLog={deleteLog}/>}
       {tab==="hyrox"   &&<HyroxTab    logs={logs} addLog={addLog} deleteLog={deleteLog}/>}
-      {tab==="training"&&<TrainingTab logs={logs} addLog={addLog} deleteLog={deleteLog}/>}
+      {tab==="training"&&<TrainingTab logs={logs} addLog={addLog} deleteLog={deleteLog} onWorkoutLive={setWorkoutLive}/>}
       {tab==="running" &&<RunningTab  logs={logs} addLog={addLog} deleteLog={deleteLog}/>}
       {tab==="account" &&<AccountTab  user={user} profile={profile} onProfileUpdate={setProfile}/>}
-      <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:"rgba(18,20,13,0.96)",borderRadius:"22px 22px 0 0",boxShadow:"0 -1px 0 rgba(255,255,255,0.06), 0 -8px 32px rgba(0,0,0,0.4)",display:"flex",zIndex:100,paddingBottom:16,paddingTop:10,backdropFilter:"blur(20px)"}}>
+      {!workoutLive&&<div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:"rgba(18,20,13,0.96)",borderRadius:"22px 22px 0 0",boxShadow:"0 -1px 0 rgba(255,255,255,0.06), 0 -8px 32px rgba(0,0,0,0.4)",display:"flex",zIndex:100,paddingBottom:16,paddingTop:10,backdropFilter:"blur(20px)"}}>
         {NAV.map((n,idx)=>{const active=tab===n.id;return(
           <button key={n.id} onClick={()=>setTab(n.id)} style={{flex:1,padding:"2px 4px 0",background:"none",border:"none",borderLeft:idx>0?"1px solid rgba(255,255,255,0.07)":"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
             {n.id==="account"?(
@@ -2913,7 +2915,7 @@ function MainApp({ user }) {
             <span style={{fontSize:9,fontWeight:active?700:400,color:active?T.orange:"rgba(255,255,255,0.5)",letterSpacing:"0.04em",transition:"color 0.2s"}}>{n.label}</span>
           </button>
         );})}
-      </div>
+      </div>}
     </div>
   );
 }
